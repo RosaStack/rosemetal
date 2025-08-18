@@ -10,7 +10,7 @@ mod tests {
 
     #[test]
     fn parser() -> Result<()> {
-        let mut parser = Parser::new(std::fs::read("test.air")?)?;
+        let mut parser = Parser::new(std::fs::read("test-files/test.air")?)?;
 
         parser.start()?;
 
@@ -19,7 +19,7 @@ mod tests {
 
     #[test]
     fn bitstream() -> Result<()> {
-        let (signature, parser) = Bitstream::from(std::fs::read("test.air")?)?;
+        let (signature, parser) = Bitstream::from(std::fs::read("test-files/test.air")?)?;
 
         let mut scope = 0;
         for entry in parser {

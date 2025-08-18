@@ -6,7 +6,7 @@ pub mod moltenvk {
             .to_string_lossy()
             .to_string();
 
-        // TODO: Detect VulkanSDK versions.
+        // TODO: Make a system that automatically detects the current VulkanSDK version on your device.
         let vulkan_sdk = format!("{}/VulkanSDK/1.4.313.1/macOS", home);
         let dyld_fallback_library_path = format!("{}/lib", vulkan_sdk);
         let vk_icd_filenames = format!("{}/share/vulkan/icd.d/MoltenVK_icd.json", vulkan_sdk);
