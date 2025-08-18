@@ -1,0 +1,19 @@
+[workspace]
+workspace.resolver = "3"
+members = [
+    "crates/rosemetal",
+    "crates/airlines",
+    "crates/rosemetal-build",
+    "examples/hello",
+]
+
+[workspace.dependencies]
+anyhow = "1.0.99"
+raw-window-handle = "0.6.2"
+objc2 = "0.6.1"
+objc2-metal = "0.3.1"
+objc2-quartz-core = "0.3.1"
+raw-window-metal = "1.1.0"
+ash = "0.38.0"
+ash-window = "0.13.0"
+crossbeam = "0.8.4"

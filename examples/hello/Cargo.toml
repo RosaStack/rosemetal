@@ -1,0 +1,18 @@
+[package]
+name = "hello"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+rosemetal = { path = "../../crates/rosemetal" }
+pollster = "0.4.0"
+winit = "0.30.11"
+anyhow = "1.0.98"
+
+
+[build-dependencies]
+rosemetal-build = { path = "../../crates/rosemetal-build" }
+
+[features]
+default = []
+moltenvk = ["rosemetal/moltenvk"]

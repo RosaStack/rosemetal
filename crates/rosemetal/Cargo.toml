@@ -1,0 +1,28 @@
+[package]
+name = "rosemetal"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = { workspace = true }
+raw-window-handle = { workspace = true }
+crossbeam = { workspace = true }
+ash = { workspace = true, optional = true }
+ash-window = { workspace = true, optional = true }
+
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+objc2 = { workspace = true }
+objc2-metal = { workspace = true }
+objc2-quartz-core = { workspace = true }
+raw-window-metal = { workspace = true }
+
+[target.'cfg(not(any(target_os = "macos", target_os = "ios")))'.dependencies]
+ash = { workspace = true }
+ash-window = { workspace = true }
+
+[features]
+default = []
+moltenvk = ["dep:ash", "dep:ash-window"]
+
+[build-dependencies]
+rosemetal-build = { path = "../rosemetal-build" }
