@@ -39,7 +39,13 @@ impl Parser {
     pub fn parse_module_record(&mut self, record: Record, result: &mut AIRModule) {
         match ModuleCode::from_u64(record.code) {
             ModuleCode::VERSION => result.version = record.fields[0],
-            _ => todo!("{:?}", record),
+            ModuleCode::TRIPLE => result.triple = Self::parse_string(record.fields),
+            ModuleCode::DATALAYOUT => result.data_layout = Self::parse_string(record.fields),
+            ModuleCode::SOURCE_FILENAME => {
+                result.source_filename = Self::parse_string(record.fields)
+            }
+            ModuleCode::GLOBALVAR => result.parse_global_variable(record.fields),
+            _ => todo!("{:?} | {:?}", ModuleCode::from_u64(record.code), record),
         }
     }
 
@@ -218,8 +224,39 @@ impl Parser {
         }
     }
 
+    pub fn parse_entry(&mut self, record: Record) -> Result<AIRAttrEntry> {
+        match AttributeCode::from_u64(record.code) {
+            AttributeCode::ENTRY => {
+                return Ok(AIRAttrEntry {
+                    groups: record.fields,
+                });
+            }
+            _ => todo!(),
+        }
+    }
+
     pub fn parse_entry_table(&mut self) -> Result<HashMap<u64, AIRAttrEntry>> {
-        todo!()
+        let mut content = self.bitstream.next();
+        let mut result: HashMap<u64, AIRAttrEntry> = HashMap::new();
+
+        loop {
+            match content {
+                Some(content) => match content? {
+                    StreamEntry::EndBlock | StreamEntry::EndOfStream => {
+                        return Ok(result);
+                    }
+                    StreamEntry::Record(record) => {
+                        let entry = self.parse_entry(record)?;
+                        result.insert(result.len() as u64 + 1, entry);
+                    }
+
+                    _ => todo!(),
+                },
+                None => return Ok(result),
+            }
+
+            content = self.bitstream.next();
+        }
     }
 
     pub fn parse_module_sub_block(
