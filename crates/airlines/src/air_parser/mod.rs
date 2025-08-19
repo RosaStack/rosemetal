@@ -45,7 +45,7 @@ impl Parser {
                 result.source_filename = Self::parse_string(record.fields)
             }
             ModuleCode::GLOBALVAR => result.parse_global_variable(record.fields),
-            ModuleCode::FUNCTION => {}
+            ModuleCode::FUNCTION => todo!()
             _ => todo!("{:?} | {:?}", ModuleCode::from_u64(record.code), record),
         }
     }
