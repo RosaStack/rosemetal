@@ -87,6 +87,8 @@ impl State {
 
         buffer.commit().unwrap();
 
+        println!("{:?}", start_time.elapsed());
+
         self.window.request_redraw();
     }
 }

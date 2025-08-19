@@ -25,6 +25,9 @@ pub struct AIRGlobalVariable {
     pub name: Rc<RefCell<TableString>>,
 }
 
+#[derive(Debug, Clone)]
+pub enum AIRConstant {}
+
 #[derive(Debug, Default, Clone)]
 pub struct AIRModule {
     pub version: u64,
@@ -36,6 +39,7 @@ pub struct AIRModule {
     pub entry_table: HashMap<u64, AIRAttrEntry>,
     pub string_table: Vec<Rc<RefCell<TableString>>>,
     pub global_variables: Vec<AIRGlobalVariable>,
+    pub constants: Vec<AIRConstant>,
 }
 
 impl AIRModule {
@@ -52,7 +56,7 @@ impl AIRModule {
         let name = self.string_table.last().unwrap().clone();
         let ty = self.types[fields[2] as usize].clone();
         let is_const = fields[3] != 0;
-        let init_id = dbg!(fields[4]);
+        let init_id = fields[4];
 
         todo!()
     }
