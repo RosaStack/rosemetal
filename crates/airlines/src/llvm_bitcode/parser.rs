@@ -191,6 +191,7 @@ impl StreamParser {
 
         Ok(Some(StreamEntry::SubBlock(Block {
             block_id,
+            bit_pos: self.cursor.position_in_bits() as u64,
             len: block_len,
         })))
     }

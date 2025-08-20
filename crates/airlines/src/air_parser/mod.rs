@@ -45,7 +45,10 @@ impl Parser {
                 result.source_filename = Self::parse_string(record.fields)
             }
             ModuleCode::GLOBALVAR => result.parse_global_variable(record.fields),
-            ModuleCode::FUNCTION => todo!()
+            ModuleCode::FUNCTION => result.parse_function_signature(record.fields),
+            ModuleCode::VSTOFFSET => result
+                .undiscovered_data
+                .push(UndiscoveredData::VSTOFFSET(record.fields[0])),
             _ => todo!("{:?} | {:?}", ModuleCode::from_u64(record.code), record),
         }
     }
@@ -100,7 +103,10 @@ impl Parser {
                         TypeCode::FUNCTION => {
                             let mut params: Vec<AIRType> = vec![];
 
+                            dbg!(&result);
+
                             for i in 2..record.fields.len() {
+                                let i = record.fields[i];
                                 params.push(result[i as usize].clone());
                             }
 
