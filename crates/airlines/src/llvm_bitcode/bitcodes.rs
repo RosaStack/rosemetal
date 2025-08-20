@@ -531,3 +531,90 @@ impl AttributeCode {
         }
     }
 }
+
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u64)]
+#[allow(non_camel_case_types)]
+pub enum ConstantsCode {
+    SETTYPE = 1,        // SETTYPE:       [typeid]
+    NULL = 2,           // NULL
+    UNDEF = 3,          // UNDEF
+    INTEGER = 4,        // INTEGER:       [intval]
+    WIDE_INTEGER = 5,   // WIDE_INTEGER:  [n x intval]
+    FLOAT = 6,          // FLOAT:         [fpval]
+    AGGREGATE = 7,      // AGGREGATE:     [n x value number]
+    STRING = 8,         // STRING:        [values]
+    CSTRING = 9,        // CSTRING:       [values]
+    CE_BINOP = 10,      // CE_BINOP:      [opcode, opval, opval]
+    CE_CAST = 11,       // CE_CAST:       [opcode, opty, opval]
+    CE_GEP_OLD = 12,    // CE_GEP:        [n x operands]
+    CE_SELECT = 13,     // CE_SELECT:     [opval, opval, opval]
+    CE_EXTRACTELT = 14, // CE_EXTRACTELT: [opty, opval, opval]
+    CE_INSERTELT = 15,  // CE_INSERTELT:  [opval, opval, opval]
+    CE_SHUFFLEVEC = 16, // CE_SHUFFLEVEC: [opval, opval, opval]
+    CE_CMP = 17,        // CE_CMP:        [opty, opval, opval, pred]
+    INLINEASM_OLD = 18, // INLINEASM:     [sideeffect|alignstack,
+    //                 asmstr,conststr]
+    CE_SHUFVEC_EX = 19,   // SHUFVEC_EX:    [opty, opval, opval, opval]
+    CE_INBOUNDS_GEP = 20, // INBOUNDS_GEP:  [n x operands]
+    BLOCKADDRESS = 21,    // CST_CODE_BLOCKADDRESS [fnty, fnval, bb#]
+    DATA = 22,            // DATA:          [n x elements]
+    INLINEASM_OLD2 = 23,  // INLINEASM:     [sideeffect|alignstack|
+    //                 asmdialect,asmstr,conststr]
+    CE_GEP_WITH_INRANGE_INDEX_OLD = 24, //  [opty, flags, n x operands]
+    CE_UNOP = 25,                       // CE_UNOP:      [opcode, opval]
+    POISON = 26,                        // POISON
+    DSO_LOCAL_EQUIVALENT = 27,          // DSO_LOCAL_EQUIVALENT [gvty, gv]
+    INLINEASM_OLD3 = 28,                // INLINEASM:     [sideeffect|alignstack|
+    //                 asmdialect|unwind,
+    //                 asmstr,conststr]
+    NO_CFI_VALUE = 29, // NO_CFI [ fty, f ]
+    INLINEASM = 30,    // INLINEASM:     [fnty,
+    //                 sideeffect|alignstack|
+    //                 asmdialect|unwind,
+    //                 asmstr,conststr]
+    CE_GEP_WITH_INRANGE = 31, // [opty, flags, range, n x operands]
+    CE_GEP = 32,              // [opty, flags, n x operands]
+    PTRAUTH = 33,             // [ptr, key, disc, addrdisc]
+}
+
+impl ConstantsCode {
+    pub fn from_u64(v: u64) -> Self {
+        match v {
+            1 => Self::SETTYPE,
+            2 => Self::NULL,
+            3 => Self::UNDEF,
+            4 => Self::INTEGER,
+            5 => Self::WIDE_INTEGER,
+            6 => Self::FLOAT,
+            7 => Self::AGGREGATE,
+            8 => Self::STRING,
+            9 => Self::CSTRING,
+            10 => Self::CE_BINOP,
+            11 => Self::CE_CAST,
+            12 => Self::CE_GEP_OLD,
+            13 => Self::CE_SELECT,
+            14 => Self::CE_EXTRACTELT,
+            15 => Self::CE_INSERTELT,
+            16 => Self::CE_SHUFFLEVEC,
+            17 => Self::CE_CMP,
+            18 => Self::INLINEASM_OLD,
+            19 => Self::CE_SHUFVEC_EX,
+            20 => Self::CE_INBOUNDS_GEP,
+            21 => Self::BLOCKADDRESS,
+            22 => Self::DATA,
+            23 => Self::INLINEASM_OLD2,
+            24 => Self::CE_GEP_WITH_INRANGE_INDEX_OLD,
+            25 => Self::CE_UNOP,
+            26 => Self::POISON,
+            27 => Self::DSO_LOCAL_EQUIVALENT,
+            28 => Self::INLINEASM_OLD3,
+            29 => Self::NO_CFI_VALUE,
+            30 => Self::INLINEASM,
+            31 => Self::CE_GEP_WITH_INRANGE,
+            32 => Self::CE_GEP,
+            33 => Self::PTRAUTH,
+            _ => unimplemented!(),
+        }
+    }
+}

@@ -1,6 +1,8 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::llvm_bitcode::{AttributeKindCode, Fields};
+use anyhow::Result;
+
+use crate::llvm_bitcode::{AttributeKindCode, Block, Fields};
 
 #[derive(Debug, Default)]
 pub struct AIRFile {
@@ -25,7 +27,7 @@ pub struct AIRGlobalVariable {
     pub name: Rc<RefCell<TableString>>,
     pub ty: AIRType,
     pub is_const: bool,
-    pub initializer: Rc<RefCell<AIRConstant>>,
+    pub initializer_id: u64,
     pub linkage: LinkageCode,
     pub alignment: u64,
     pub section_index: u64,
@@ -41,6 +43,17 @@ pub struct AIRGlobalVariable {
 #[derive(Debug, Default, Clone)]
 pub struct AIRConstant {
     pub ty: AIRType,
+    pub value: AIRConstantValue,
+}
+
+#[derive(Debug, Default, Clone)]
+pub enum AIRConstantValue {
+    #[default]
+    Null,
+    Integer(u64),
+    Float32(f32),
+    Aggregate(Vec<AIRConstant>),
+    Array(Vec<AIRConstantValue>),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -196,6 +209,81 @@ impl PreemptionSpecifierCode {
 }
 
 #[derive(Debug, Default, Clone)]
+#[repr(u64)]
+#[allow(non_camel_case_types)]
+pub enum CallingConventionCode {
+    #[default]
+    C = 0,
+    FAST = 8,
+    COLD = 9,
+    ANY_REG = 13,
+    PRESERVE_MOST = 14,
+    PRESERVE_ALL = 15,
+    SWIFT = 16,
+    CXX_FAST_TLS = 17,
+    TAIL = 18,
+    CFGUARD_CHECK = 19,
+    SWIFT_TAIL = 20,
+    X86_STDCALL = 64,
+    X86_FASTCALL = 65,
+    ARM_APCS = 66,
+    ARM_AAPCS = 67,
+    ARM_AAPCS_VFP = 68,
+}
+
+impl CallingConventionCode {
+    pub fn from_u64(v: u64) -> Self {
+        match v {
+            0 => Self::C,
+            8 => Self::FAST,
+            9 => Self::COLD,
+            13 => Self::ANY_REG,
+            14 => Self::PRESERVE_MOST,
+            15 => Self::PRESERVE_ALL,
+            16 => Self::SWIFT,
+            17 => Self::CXX_FAST_TLS,
+            18 => Self::TAIL,
+            19 => Self::CFGUARD_CHECK,
+            20 => Self::SWIFT_TAIL,
+            64 => Self::X86_STDCALL,
+            65 => Self::X86_FASTCALL,
+            66 => Self::ARM_APCS,
+            67 => Self::ARM_AAPCS,
+            68 => Self::ARM_AAPCS_VFP,
+            _ => unimplemented!(),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AIRFunctionSignature {
+    pub name: Rc<RefCell<TableString>>,
+    pub ty: AIRType,
+    pub calling_convention: CallingConventionCode,
+    pub is_proto: bool,
+    pub linkage: LinkageCode,
+    pub attr_entry: Option<AIRAttrEntry>,
+    pub alignment: u64,
+    pub section_index: u64,
+    pub visibility: VisibilityCode,
+    pub gc_index: u64,
+    pub unnamed_addr: UnnamedAddrCode,
+    pub prologue_data_index: u64,
+    pub comdat: u64,
+    pub prefix_data_index: u64,
+    pub personality_fn_index: u64,
+    pub preemption_specifier: PreemptionSpecifierCode,
+}
+
+#[derive(Debug, Default, Clone)]
+#[allow(non_camel_case_types)]
+pub enum UndiscoveredData {
+    #[default]
+    NONE,
+    VSTOFFSET(u64),
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct AIRModule {
     pub version: u64,
     pub triple: String,
@@ -206,7 +294,9 @@ pub struct AIRModule {
     pub entry_table: HashMap<u64, AIRAttrEntry>,
     pub string_table: Vec<Rc<RefCell<TableString>>>,
     pub global_variables: HashMap<u64, AIRGlobalVariable>,
-    pub constants: HashMap<u64, Rc<RefCell<AIRConstant>>>,
+    pub function_signatures: HashMap<u64, AIRFunctionSignature>,
+    pub constants: HashMap<u64, AIRConstant>,
+    pub undiscovered_data: Vec<UndiscoveredData>,
     pub max_global_id: u64,
 }
 
@@ -224,12 +314,14 @@ impl AIRModule {
         let name = self.string_table.last().unwrap().clone();
         let ty = self.types[fields[2] as usize].clone();
         let is_const = fields[3] != 0;
-        let initializer = Rc::new(RefCell::new(AIRConstant { ty: ty.clone() }));
 
-        self.constants.insert(fields[4], initializer.clone());
+        let initializer_id = fields[4];
 
         let linkage = LinkageCode::from_u64(fields[5]);
-        let alignment = 2_u64.pow((fields[6] - 1) as u32);
+        let alignment = match fields[7].checked_sub(1) {
+            Some(result) => 2_u64.pow(result as u32),
+            None => 0,
+        };
         // TODO: Parse section (fields[7]) correctly.
         let section_index = fields[7];
 
@@ -250,7 +342,7 @@ impl AIRModule {
                 name,
                 ty,
                 is_const,
-                initializer,
+                initializer_id,
                 linkage,
                 alignment,
                 section_index,
@@ -265,6 +357,77 @@ impl AIRModule {
         );
 
         self.max_global_id += 1;
+    }
+
+    pub fn parse_function_signature(&mut self, fields: Fields) {
+        let string_offset = fields[0];
+        let string_size = fields[1];
+
+        self.string_table.push(Rc::new(RefCell::new(TableString {
+            offset: string_offset,
+            size: string_size,
+            content: String::new(),
+        })));
+
+        let name = self.string_table.last().unwrap().clone();
+        let ty = self.types[fields[2] as usize].clone();
+        let calling_convention = CallingConventionCode::from_u64(fields[3]);
+        let is_proto = fields[4] != 0;
+        let linkage = LinkageCode::from_u64(fields[5]);
+
+        let attr_entry = match self.entry_table.get(&fields[6]) {
+            Some(entry) => Some(entry.clone()),
+            None => None,
+        };
+
+        let alignment = match fields[7].checked_sub(1) {
+            Some(result) => 2_u64.pow(result as u32),
+            None => 0,
+        };
+
+        // TODO: Parse section (fields[8]) correctly.
+        let section_index = fields[8];
+        let visibility = VisibilityCode::from_u64(fields[9]);
+
+        // TODO: Parse gc (fields[10]) correctly.
+        let gc_index = fields[10];
+        let unnamed_addr = UnnamedAddrCode::from_u64(fields[11]);
+
+        // TODO: Parse prologue_data (fields[12]) correctly.
+        let prologue_data_index = fields[12];
+
+        // TODO: Parse comdat (fields[13]) correctly.
+        let comdat = fields[13];
+
+        // TODO: Parse prefix_data (fields[14]) correctly.
+        let prefix_data_index = fields[14];
+
+        // TODO: Parse personality_fn (fields[15]) correctly.
+        let personality_fn_index = fields[15];
+
+        let preemption_specifier = PreemptionSpecifierCode::from_u64(fields[16]);
+
+        self.function_signatures.insert(
+            self.max_global_id,
+            AIRFunctionSignature {
+                name,
+                ty,
+                calling_convention,
+                is_proto,
+                linkage,
+                attr_entry,
+                alignment,
+                section_index,
+                visibility,
+                gc_index,
+                unnamed_addr,
+                prologue_data_index,
+                comdat,
+                prefix_data_index,
+                personality_fn_index,
+                preemption_specifier,
+            },
+        );
     }
 }
 

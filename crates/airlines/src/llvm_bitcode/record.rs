@@ -3,6 +3,7 @@ pub type Fields = Vec<u64>;
 #[derive(Debug)]
 pub struct Block {
     pub block_id: u64,
+    pub bit_pos: u64,
     pub len: u64,
 }
 

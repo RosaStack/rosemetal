@@ -87,6 +87,10 @@ impl BitCursor {
         self.bit_index == 0 && self.byte_len() <= self.byte_pos
     }
 
+    pub fn position_in_bits(&self) -> usize {
+        (self.byte_pos * 8) + self.bit_index
+    }
+
     /// Seek to the given bit-granular position in the bitstream.
     ///
     /// NOTE: This is a bit-granular absolute seek. If you only need byte granularity

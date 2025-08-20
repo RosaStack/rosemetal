@@ -7,8 +7,8 @@ pub use items::*;
 use anyhow::{Result, anyhow};
 
 use crate::llvm_bitcode::{
-    AttributeCode, AttributeKindCode, Bitstream, Block, BlockID, Fields, IdentificationCode,
-    ModuleCode, Record, Signature, StreamEntry, TypeCode,
+    AttributeCode, AttributeKindCode, Bitstream, Block, BlockID, ConstantsCode, Fields,
+    IdentificationCode, ModuleCode, Record, Signature, StreamEntry, TypeCode,
 };
 
 pub struct Parser {
@@ -45,7 +45,10 @@ impl Parser {
                 result.source_filename = Self::parse_string(record.fields)
             }
             ModuleCode::GLOBALVAR => result.parse_global_variable(record.fields),
-            ModuleCode::FUNCTION => todo!()
+            ModuleCode::FUNCTION => result.parse_function_signature(record.fields),
+            ModuleCode::VSTOFFSET => result
+                .undiscovered_data
+                .push(UndiscoveredData::VSTOFFSET(record.fields[0])),
             _ => todo!("{:?} | {:?}", ModuleCode::from_u64(record.code), record),
         }
     }
@@ -100,7 +103,10 @@ impl Parser {
                         TypeCode::FUNCTION => {
                             let mut params: Vec<AIRType> = vec![];
 
+                            dbg!(&result);
+
                             for i in 2..record.fields.len() {
+                                let i = record.fields[i];
                                 params.push(result[i as usize].clone());
                             }
 
@@ -260,6 +266,123 @@ impl Parser {
         }
     }
 
+    pub fn parse_aggregate(
+        &mut self,
+        result: &mut AIRModule,
+        record: &Record,
+        current_type: &AIRType,
+    ) -> Result<AIRConstant> {
+        let mut contents: Vec<AIRConstant> = vec![];
+        for i in &record.fields {
+            contents.push(result.constants.get(i).unwrap().clone());
+        }
+
+        Ok(AIRConstant {
+            ty: current_type.clone(),
+            value: AIRConstantValue::Aggregate(contents),
+        })
+    }
+
+    pub fn parse_constant_data(
+        &mut self,
+        array_ty: &AIRType,
+        fields: Fields,
+    ) -> Result<AIRConstantValue> {
+        let element_type = match &array_ty {
+            AIRType::Vector(v) => &v.element_type,
+            AIRType::Array(a) => &a.element_type,
+            _ => todo!(),
+        };
+
+        let mut contents: Vec<AIRConstantValue> = vec![];
+        for i in fields {
+            match **element_type {
+                AIRType::Float => {
+                    let result = f32::from_le_bytes((i as u32).to_le_bytes());
+                    contents.push(AIRConstantValue::Float32(result));
+                }
+                AIRType::Integer(_) => {
+                    contents.push(AIRConstantValue::Integer(i));
+                }
+                _ => todo!("{:?}", **element_type),
+            }
+        }
+
+        Ok(AIRConstantValue::Array(contents))
+    }
+
+    pub fn parse_constants(&mut self, result: &mut AIRModule) -> Result<()> {
+        let mut content = self.bitstream.next();
+        let mut current_type = AIRType::Void;
+        let mut max_id = 0;
+
+        let mut skip_add_one_in_settype = false;
+        loop {
+            match content {
+                Some(ucontent) => match ucontent? {
+                    StreamEntry::EndBlock | StreamEntry::EndOfStream => break,
+                    StreamEntry::Record(record) => match ConstantsCode::from_u64(record.code) {
+                        ConstantsCode::SETTYPE => {
+                            current_type = result.types[record.fields[0] as usize].clone();
+
+                            if skip_add_one_in_settype {
+                                content = self.bitstream.next();
+                                skip_add_one_in_settype = false;
+                                continue;
+                            }
+                        }
+                        ConstantsCode::INTEGER => {
+                            let _ = result.constants.insert(
+                                max_id,
+                                AIRConstant {
+                                    ty: current_type.clone(),
+                                    value: AIRConstantValue::Integer(record.fields[0]),
+                                },
+                            );
+                        }
+                        ConstantsCode::NULL => {
+                            let _ = result.constants.insert(
+                                max_id,
+                                AIRConstant {
+                                    ty: current_type.clone(),
+                                    value: AIRConstantValue::Null,
+                                },
+                            );
+                        }
+                        ConstantsCode::AGGREGATE => {
+                            let aggregate = self.parse_aggregate(result, &record, &current_type)?;
+                            let _ = result.constants.insert(max_id, aggregate);
+                            skip_add_one_in_settype = true;
+                        }
+                        ConstantsCode::DATA => {
+                            let _ = result.constants.insert(
+                                max_id,
+                                AIRConstant {
+                                    ty: current_type.clone(),
+                                    value: self
+                                        .parse_constant_data(&current_type, record.fields)?,
+                                },
+                            );
+                            skip_add_one_in_settype = true;
+                        }
+                        _ => todo!("{:#?}", ConstantsCode::from_u64(record.code)),
+                    },
+
+                    _ => todo!(),
+                },
+                None => break,
+            }
+
+            max_id += 1;
+
+            content = self.bitstream.next();
+        }
+
+        dbg!(&result.constants);
+
+        Ok(())
+    }
+
     pub fn parse_module_sub_block(
         &mut self,
         sub_block: Block,
@@ -269,6 +392,7 @@ impl Parser {
             BlockID::TYPE_NEW => result.types = self.parse_type_entries()?,
             BlockID::PARAMATTR_GROUP => result.attributes = self.parse_attribute_group()?,
             BlockID::PARAMATTR => result.entry_table = self.parse_entry_table()?,
+            BlockID::CONSTANTS => self.parse_constants(result)?,
             _ => todo!("{:?}", BlockID::from_u64(sub_block.block_id)),
         }
 
