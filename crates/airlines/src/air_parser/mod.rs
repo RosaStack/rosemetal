@@ -393,6 +393,7 @@ impl Parser {
             BlockID::PARAMATTR_GROUP => result.attributes = self.parse_attribute_group()?,
             BlockID::PARAMATTR => result.entry_table = self.parse_entry_table()?,
             BlockID::CONSTANTS => self.parse_constants(result)?,
+            BlockID::METADATA_KIND => todo!(),
             _ => todo!("{:?}", BlockID::from_u64(sub_block.block_id)),
         }
 
