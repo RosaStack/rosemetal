@@ -464,7 +464,7 @@ impl Parser {
 
     pub fn parse_metadata_block(&mut self, result: &mut AIRModule) -> Result<()> {
         let mut content = self.bitstream.next();
-
+        let mut current_name = String::new();
         loop {
             match content {
                 Some(content) => match content? {
@@ -485,14 +485,18 @@ impl Parser {
                                 .metadata_constants
                                 .insert(result.metadata_constants.len() as u64 + 1, constant);
                         }
-                        MetadataCodes::NODE => {
+                        MetadataCodes::NODE | MetadataCodes::NAMED_NODE => {
                             let _ = result.metadata_constants.insert(
                                 result.metadata_constants.len() as u64 + 1,
-                                AIRMetadataConstant::Node(record.fields),
+                                AIRMetadataConstant::Node(current_name.clone(), record.fields),
                             );
+                            current_name.clear();
                         }
                         MetadataCodes::INDEX => {
-                            panic!("{:#?}", result.metadata_constants);
+                            // Skip. We don't need this data (for now).
+                        }
+                        MetadataCodes::NAME => {
+                            current_name = Self::parse_string(record.fields);
                         }
                         _ => todo!("{:?}", MetadataCodes::from_u64(record.code)),
                     },
@@ -516,7 +520,10 @@ impl Parser {
             BlockID::PARAMATTR => result.entry_table = self.parse_entry_table()?,
             BlockID::CONSTANTS => self.parse_constants(result)?,
             BlockID::METADATA_KIND => self.parse_metadata_kind_block(result)?,
-            BlockID::METADATA => self.parse_metadata_block(result)?,
+            BlockID::METADATA => {
+                self.parse_metadata_block(result)?;
+                dbg!(&result.metadata_constants);
+            }
             _ => todo!("{:?}", BlockID::from_u64(sub_block.block_id)),
         }
 
