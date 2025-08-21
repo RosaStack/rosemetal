@@ -7,8 +7,8 @@ pub use items::*;
 use anyhow::{Result, anyhow};
 
 use crate::llvm_bitcode::{
-    AttributeCode, AttributeKindCode, Bitstream, Block, BlockID, ConstantsCode, Fields,
-    IdentificationCode, ModuleCode, Record, Signature, StreamEntry, TypeCode,
+    AttributeCode, AttributeKindCode, BitCursor, Bitstream, Block, BlockID, ConstantsCode, Fields,
+    IdentificationCode, MetadataCodes, ModuleCode, Record, Signature, StreamEntry, TypeCode,
 };
 
 pub struct Parser {
@@ -102,8 +102,6 @@ impl Parser {
                         )),
                         TypeCode::FUNCTION => {
                             let mut params: Vec<AIRType> = vec![];
-
-                            dbg!(&result);
 
                             for i in 2..record.fields.len() {
                                 let i = record.fields[i];
@@ -283,8 +281,32 @@ impl Parser {
         })
     }
 
+    pub fn parse_constant_value_with_type(
+        result: &mut AIRModule,
+        ty: &AIRType,
+        value: u64,
+    ) -> AIRConstantValue {
+        match ty {
+            AIRType::Float => {
+                let result = f32::from_le_bytes((value as u32).to_le_bytes());
+                return AIRConstantValue::Float32(result);
+            }
+            AIRType::Integer(_) => {
+                return AIRConstantValue::Integer(value);
+            }
+            AIRType::Array(_) => {
+                return result.constants[&value].value.clone();
+            }
+            AIRType::Pointer(_, _) => {
+                return AIRConstantValue::Pointer(value);
+            }
+            _ => todo!("{:?}", ty),
+        }
+    }
+
     pub fn parse_constant_data(
         &mut self,
+        result: &mut AIRModule,
         array_ty: &AIRType,
         fields: Fields,
     ) -> Result<AIRConstantValue> {
@@ -296,16 +318,11 @@ impl Parser {
 
         let mut contents: Vec<AIRConstantValue> = vec![];
         for i in fields {
-            match **element_type {
-                AIRType::Float => {
-                    let result = f32::from_le_bytes((i as u32).to_le_bytes());
-                    contents.push(AIRConstantValue::Float32(result));
-                }
-                AIRType::Integer(_) => {
-                    contents.push(AIRConstantValue::Integer(i));
-                }
-                _ => todo!("{:?}", **element_type),
-            }
+            contents.push(Self::parse_constant_value_with_type(
+                result,
+                &**element_type,
+                i,
+            ));
         }
 
         Ok(AIRConstantValue::Array(contents))
@@ -355,14 +372,15 @@ impl Parser {
                             skip_add_one_in_settype = true;
                         }
                         ConstantsCode::DATA => {
-                            let _ = result.constants.insert(
-                                max_id,
-                                AIRConstant {
-                                    ty: current_type.clone(),
-                                    value: self
-                                        .parse_constant_data(&current_type, record.fields)?,
-                                },
-                            );
+                            let data = AIRConstant {
+                                ty: current_type.clone(),
+                                value: self.parse_constant_data(
+                                    result,
+                                    &current_type,
+                                    record.fields,
+                                )?,
+                            };
+                            let _ = result.constants.insert(max_id, data);
                             skip_add_one_in_settype = true;
                         }
                         _ => todo!("{:#?}", ConstantsCode::from_u64(record.code)),
@@ -378,9 +396,104 @@ impl Parser {
             content = self.bitstream.next();
         }
 
-        dbg!(&result.constants);
-
         Ok(())
+    }
+
+    pub fn parse_metadata_kind_block(&mut self, result: &mut AIRModule) -> Result<()> {
+        let mut content = self.bitstream.next();
+
+        loop {
+            match content {
+                Some(content) => match content? {
+                    StreamEntry::EndBlock | StreamEntry::EndOfStream => return Ok(()),
+                    StreamEntry::Record(record) => match MetadataCodes::from_u64(record.code) {
+                        MetadataCodes::KIND => {
+                            let _ = result.metadata_kind_table.insert(
+                                record.fields[0],
+                                AIRMetadataKind {
+                                    id: record.fields[0],
+                                    name: Self::parse_string(record.fields[1..].to_vec()),
+                                },
+                            );
+                        }
+                        _ => todo!(),
+                    },
+                    _ => todo!(),
+                },
+                None => return Ok(()),
+            }
+
+            content = self.bitstream.next();
+        }
+    }
+
+    pub fn parse_metadata_strings(fields: Fields) -> Result<Vec<String>> {
+        let mut result: Vec<String> = vec![];
+
+        let length = fields[0];
+        let offset = fields[1];
+
+        let mut lengths_vec: Vec<u64> = vec![];
+
+        let mut count = 0;
+        while count != length {
+            lengths_vec.push(fields[count as usize + 2]);
+            count += 1;
+        }
+
+        let length_stream = lengths_vec.iter().map(|x| *x as u8).collect::<Vec<_>>();
+
+        let mut cursor = BitCursor::new(length_stream);
+
+        let mut count = 0;
+        let mut pointer = 0;
+        while count != length {
+            let size = cursor.read_vbr(6)?;
+            let end = pointer + size;
+            let mut string = String::new();
+            while pointer != end {
+                string.push((fields[offset as usize + 2 + pointer as usize]) as u8 as char);
+                pointer += 1;
+            }
+            result.push(string);
+            count += 1;
+        }
+
+        Ok(result)
+    }
+
+    pub fn parse_metadata_block(&mut self, result: &mut AIRModule) -> Result<()> {
+        let mut content = self.bitstream.next();
+
+        loop {
+            match content {
+                Some(content) => match content? {
+                    StreamEntry::EndBlock | StreamEntry::EndOfStream => return Ok(()),
+                    StreamEntry::Record(record) => match MetadataCodes::from_u64(record.code) {
+                        MetadataCodes::STRINGS => {
+                            result.metadata_strings = Self::parse_metadata_strings(record.fields)?
+                        }
+                        MetadataCodes::INDEX_OFFSET => result
+                            .undiscovered_data
+                            .push(UndiscoveredData::INDEX_OFFSET(record.fields[0])),
+                        MetadataCodes::VALUE => {
+                            let ty = result.types[record.fields[0] as usize].clone();
+                            let constant = AIRMetadataConstant::Value(
+                                Self::parse_constant_value_with_type(result, &ty, record.fields[1]),
+                            );
+                            let _ = result
+                                .metadata_constants
+                                .insert(result.metadata_constants.len() as u64 + 1, constant);
+                        }
+                        _ => todo!("{:?}", MetadataCodes::from_u64(record.code)),
+                    },
+                    _ => todo!(),
+                },
+                None => return Ok(()),
+            }
+
+            content = self.bitstream.next();
+        }
     }
 
     pub fn parse_module_sub_block(
@@ -393,7 +506,8 @@ impl Parser {
             BlockID::PARAMATTR_GROUP => result.attributes = self.parse_attribute_group()?,
             BlockID::PARAMATTR => result.entry_table = self.parse_entry_table()?,
             BlockID::CONSTANTS => self.parse_constants(result)?,
-            BlockID::METADATA_KIND => todo!(),
+            BlockID::METADATA_KIND => self.parse_metadata_kind_block(result)?,
+            BlockID::METADATA => self.parse_metadata_block(result)?,
             _ => todo!("{:?}", BlockID::from_u64(sub_block.block_id)),
         }
 

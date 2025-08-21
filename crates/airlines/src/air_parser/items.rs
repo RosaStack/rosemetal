@@ -54,6 +54,7 @@ pub enum AIRConstantValue {
     Float32(f32),
     Aggregate(Vec<AIRConstant>),
     Array(Vec<AIRConstantValue>),
+    Pointer(u64),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -281,6 +282,21 @@ pub enum UndiscoveredData {
     #[default]
     NONE,
     VSTOFFSET(u64),
+    INDEX_OFFSET(u64),
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AIRMetadataKind {
+    pub id: u64,
+    pub name: String,
+}
+
+#[derive(Debug, Default, Clone)]
+pub enum AIRMetadataConstant {
+    #[default]
+    None,
+    Value(AIRConstantValue),
+    Pointer(u64),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -297,6 +313,9 @@ pub struct AIRModule {
     pub function_signatures: HashMap<u64, AIRFunctionSignature>,
     pub constants: HashMap<u64, AIRConstant>,
     pub undiscovered_data: Vec<UndiscoveredData>,
+    pub metadata_kind_table: HashMap<u64, AIRMetadataKind>,
+    pub metadata_strings: Vec<String>,
+    pub metadata_constants: HashMap<u64, AIRMetadataConstant>,
     pub max_global_id: u64,
 }
 

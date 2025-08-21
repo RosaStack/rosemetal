@@ -620,3 +620,114 @@ impl ConstantsCode {
         }
     }
 }
+
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u64)]
+#[allow(non_camel_case_types)]
+pub enum MetadataCodes {
+    STRING_OLD = 1,              // MDSTRING:      [values]
+    VALUE = 2,                   // VALUE:         [type num, value num]
+    NODE = 3,                    // NODE:          [n x md num]
+    NAME = 4,                    // STRING:        [values]
+    DISTINCT_NODE = 5,           // DISTINCT_NODE: [n x md num]
+    KIND = 6,                    // [n x [id, name]]
+    LOCATION = 7,                // [distinct, line, col, scope, inlined-at?]
+    OLD_NODE = 8,                // OLD_NODE:      [n x (type num, value num)]
+    OLD_FN_NODE = 9,             // OLD_FN_NODE:   [n x (type num, value num)]
+    NAMED_NODE = 10,             // NAMED_NODE:    [n x mdnodes]
+    ATTACHMENT = 11,             // [m x [value, [n x [id, mdnode]]]
+    GENERIC_DEBUG = 12,          // [distinct, tag, vers, header, n x md num]
+    SUBRANGE = 13,               // [distinct, count, lo]
+    ENUMERATOR = 14,             // [isUnsigned|distinct, value, name]
+    BASIC_TYPE = 15,             // [distinct, tag, name, size, align, enc]
+    FILE = 16,                   // [distinct, filename, directory, checksumkind, checksum]
+    DERIVED_TYPE = 17,           // [distinct, ...]
+    COMPOSITE_TYPE = 18,         // [distinct, ...]
+    SUBROUTINE_TYPE = 19,        // [distinct, flags, types, cc]
+    COMPILE_UNIT = 20,           // [distinct, ...]
+    SUBPROGRAM = 21,             // [distinct, ...]
+    LEXICAL_BLOCK = 22,          // [distinct, scope, file, line, column]
+    LEXICAL_BLOCK_FILE = 23,     //[distinct, scope, file, discriminator]
+    NAMESPACE = 24,              // [distinct, scope, file, name, line, exportSymbols]
+    TEMPLATE_TYPE = 25,          // [distinct, scope, name, type, ...]
+    TEMPLATE_VALUE = 26,         // [distinct, scope, name, type, value, ...]
+    GLOBAL_VAR = 27,             // [distinct, ...]
+    LOCAL_VAR = 28,              // [distinct, ...]
+    EXPRESSION = 29,             // [distinct, n x element]
+    OBJC_PROPERTY = 30,          // [distinct, name, file, line, ...]
+    IMPORTED_ENTITY = 31,        // [distinct, tag, scope, entity, line, name]
+    MODULE = 32,                 // [distinct, scope, name, ...]
+    MACRO = 33,                  // [distinct, macinfo, line, name, value]
+    MACRO_FILE = 34,             // [distinct, macinfo, line, file, ...]
+    STRINGS = 35,                // [count, offset] blob([lengths][chars])
+    GLOBAL_DECL_ATTACHMENT = 36, // [valueid, n x [id, mdnode]]
+    GLOBAL_VAR_EXPR = 37,        // [distinct, var, expr]
+    INDEX_OFFSET = 38,           // [offset]
+    INDEX = 39,                  // [bitpos]
+    LABEL = 40,                  // [distinct, scope, name, file, line]
+    STRING_TYPE = 41,            // [distinct, name, size, align,...]
+    // Codes 42 and 43 are reserved for support for Fortran array specific debug
+    // info.
+    FORTRAN_RESERVED_1 = 42,
+    FORTRAN_RESERVED_2 = 43,
+
+    COMMON_BLOCK = 44,     // [distinct, scope, name, variable,...]
+    GENERIC_SUBRANGE = 45, // [distinct, count, lo, up, stride]
+    ARG_LIST = 46,         // [n x [type num, value num]]
+    ASSIGN_ID = 47,        // [distinct, ...]
+}
+
+impl MetadataCodes {
+    pub fn from_u64(v: u64) -> Self {
+        match v {
+            1 => Self::STRING_OLD,
+            2 => Self::VALUE,
+            3 => Self::NODE,
+            4 => Self::NAME,
+            5 => Self::DISTINCT_NODE,
+            6 => Self::KIND,
+            7 => Self::LOCATION,
+            8 => Self::OLD_NODE,
+            9 => Self::OLD_FN_NODE,
+            10 => Self::NAMED_NODE,
+            11 => Self::ATTACHMENT,
+            12 => Self::GENERIC_DEBUG,
+            13 => Self::SUBRANGE,
+            14 => Self::ENUMERATOR,
+            15 => Self::BASIC_TYPE,
+            16 => Self::FILE,
+            17 => Self::DERIVED_TYPE,
+            18 => Self::COMPOSITE_TYPE,
+            19 => Self::SUBROUTINE_TYPE,
+            20 => Self::COMPILE_UNIT,
+            21 => Self::SUBPROGRAM,
+            22 => Self::LEXICAL_BLOCK,
+            23 => Self::LEXICAL_BLOCK_FILE,
+            24 => Self::NAMESPACE,
+            25 => Self::TEMPLATE_TYPE,
+            26 => Self::TEMPLATE_VALUE,
+            27 => Self::GLOBAL_VAR,
+            28 => Self::LOCAL_VAR,
+            29 => Self::EXPRESSION,
+            30 => Self::OBJC_PROPERTY,
+            31 => Self::IMPORTED_ENTITY,
+            32 => Self::MODULE,
+            33 => Self::MACRO,
+            34 => Self::MACRO_FILE,
+            35 => Self::STRINGS,
+            36 => Self::GLOBAL_DECL_ATTACHMENT,
+            37 => Self::GLOBAL_VAR_EXPR,
+            38 => Self::INDEX_OFFSET,
+            39 => Self::INDEX,
+            40 => Self::LABEL,
+            41 => Self::STRING_TYPE,
+            42 => Self::FORTRAN_RESERVED_1,
+            43 => Self::FORTRAN_RESERVED_2,
+            44 => Self::COMMON_BLOCK,
+            45 => Self::GENERIC_SUBRANGE,
+            46 => Self::ARG_LIST,
+            47 => Self::ASSIGN_ID,
+            _ => unimplemented!(),
+        }
+    }
+}
