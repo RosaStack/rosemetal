@@ -297,6 +297,7 @@ pub enum AIRMetadataConstant {
     None,
     Value(AIRConstantValue),
     Pointer(u64),
+    Node(Vec<u64>),
 }
 
 #[derive(Debug, Default, Clone)]

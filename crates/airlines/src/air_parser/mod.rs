@@ -1,6 +1,6 @@
 pub mod items;
 
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 pub use items::*;
 
@@ -484,6 +484,15 @@ impl Parser {
                             let _ = result
                                 .metadata_constants
                                 .insert(result.metadata_constants.len() as u64 + 1, constant);
+                        }
+                        MetadataCodes::NODE => {
+                            let _ = result.metadata_constants.insert(
+                                result.metadata_constants.len() as u64 + 1,
+                                AIRMetadataConstant::Node(record.fields),
+                            );
+                        }
+                        MetadataCodes::INDEX => {
+                            panic!("{:#?}", result.metadata_constants);
                         }
                         _ => todo!("{:?}", MetadataCodes::from_u64(record.code)),
                     },
