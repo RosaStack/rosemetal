@@ -509,6 +509,60 @@ impl Parser {
         }
     }
 
+    pub fn parse_operand_bundle_tags(&mut self, result: &mut AIRModule) -> Result<()> {
+        let mut content = self.bitstream.next();
+
+        loop {
+            match content {
+                Some(content) => match content? {
+                    StreamEntry::EndBlock | StreamEntry::EndOfStream => {
+                        return Ok(());
+                    }
+                    StreamEntry::Record(record) => {
+                        if record.code != 1 {
+                            return Err(anyhow!("Invalid operand bundle tag."));
+                        }
+
+                        result
+                            .operand_bundle_tags
+                            .push(Self::parse_string(record.fields));
+                    }
+                    _ => todo!(),
+                },
+                None => return Ok(()),
+            }
+
+            content = self.bitstream.next();
+        }
+    }
+
+    pub fn parse_sync_scope_names(&mut self, result: &mut AIRModule) -> Result<()> {
+        let mut content = self.bitstream.next();
+
+        loop {
+            match content {
+                Some(content) => match content? {
+                    StreamEntry::EndBlock | StreamEntry::EndOfStream => {
+                        return Ok(());
+                    }
+                    StreamEntry::Record(record) => {
+                        if record.code != 1 {
+                            return Err(anyhow!("Invalid sync scoped name."));
+                        }
+
+                        result
+                            .sync_scope_names
+                            .push(Self::parse_string(record.fields));
+                    }
+                    _ => todo!(),
+                },
+                None => return Ok(()),
+            }
+
+            content = self.bitstream.next();
+        }
+    }
+
     pub fn parse_module_sub_block(
         &mut self,
         sub_block: Block,
@@ -520,10 +574,9 @@ impl Parser {
             BlockID::PARAMATTR => result.entry_table = self.parse_entry_table()?,
             BlockID::CONSTANTS => self.parse_constants(result)?,
             BlockID::METADATA_KIND => self.parse_metadata_kind_block(result)?,
-            BlockID::METADATA => {
-                self.parse_metadata_block(result)?;
-                dbg!(&result.metadata_constants);
-            }
+            BlockID::METADATA => self.parse_metadata_block(result)?,
+            BlockID::OPERAND_BUNDLE_TAGS => self.parse_operand_bundle_tags(result)?,
+            BlockID::SYNC_SCOPE_NAMES => self.parse_sync_scope_names(result)?,
             _ => todo!("{:?}", BlockID::from_u64(sub_block.block_id)),
         }
 

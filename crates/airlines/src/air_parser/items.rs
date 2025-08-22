@@ -317,6 +317,8 @@ pub struct AIRModule {
     pub metadata_kind_table: HashMap<u64, AIRMetadataKind>,
     pub metadata_strings: Vec<String>,
     pub metadata_constants: HashMap<u64, AIRMetadataConstant>,
+    pub operand_bundle_tags: Vec<String>,
+    pub sync_scope_names: Vec<String>,
     pub max_global_id: u64,
 }
 
