@@ -731,3 +731,171 @@ impl MetadataCodes {
         }
     }
 }
+
+#[derive(Debug, PartialEq, Eq)]
+#[repr(u64)]
+#[allow(non_camel_case_types)]
+pub enum FunctionCodes {
+    DECLAREBLOCKS = 1, // DECLAREBLOCKS: [n]
+
+    INST_BINOP = 2,      // BINOP:      [opcode, ty, opval, opval]
+    INST_CAST = 3,       // CAST:       [opcode, ty, opty, opval]
+    INST_GEP_OLD = 4,    // GEP:        [n x operands]
+    INST_SELECT = 5,     // SELECT:     [ty, opval, opval, opval]
+    INST_EXTRACTELT = 6, // EXTRACTELT: [opty, opval, opval]
+    INST_INSERTELT = 7,  // INSERTELT:  [ty, opval, opval, opval]
+    INST_SHUFFLEVEC = 8, // SHUFFLEVEC: [ty, opval, opval, opval]
+    INST_CMP = 9,        // CMP:        [opty, opval, opval, pred]
+
+    INST_RET = 10,    // RET:        [opty,opval<both optional>]
+    INST_BR = 11,     // BR:         [bb#, bb#, cond] or [bb#]
+    INST_SWITCH = 12, // SWITCH:     [opty, op0, op1, ...]
+    INST_INVOKE = 13, // INVOKE:     [attr, fnty, op0,op1, ...]
+    // 14 is unused.
+    INST_UNREACHABLE = 15, // UNREACHABLE
+
+    INST_PHI = 16, // PHI:        [ty, val0,bb0, ...]
+    // 17 is unused.
+    // 18 is unused.
+    INST_ALLOCA = 19, // ALLOCA:     [instty, opty, op, align]
+    INST_LOAD = 20,   // LOAD:       [opty, op, align, vol]
+    // 21 is unused.
+    // 22 is unused.
+    INST_VAARG = 23, // VAARG:      [valistty, valist, instty]
+    // This store code encodes the pointer type, rather than the value type
+    // this is so information only available in the pointer type (e.g. address
+    // spaces) is retained.
+    INST_STORE_OLD = 24, // STORE:      [ptrty,ptr,val, align, vol]
+    // 25 is unused.
+    INST_EXTRACTVAL = 26, // EXTRACTVAL: [n x operands]
+    INST_INSERTVAL = 27,  // INSERTVAL:  [n x operands]
+    // fcmp/icmp returning Int1TY or vector of Int1Ty. Same as CMP, exists to
+    // support legacy vicmp/vfcmp instructions.
+    INST_CMP2 = 28, // CMP2:       [opty, opval, opval, pred]
+    // new select on i1 or [N x i1]
+    INST_VSELECT = 29,          // VSELECT:    [ty,opval,opval,predty,pred]
+    INST_INBOUNDS_GEP_OLD = 30, // INBOUNDS_GEP: [n x operands]
+    INST_INDIRECTBR = 31,       // INDIRECTBR: [opty, op0, op1, ...]
+    // 32 is unused.
+    DEBUG_LOC_AGAIN = 33, // DEBUG_LOC_AGAIN
+
+    INST_CALL = 34, // CALL:    [attr, cc, fnty, fnid, args...]
+
+    DEBUG_LOC = 35,        // DEBUG_LOC:  [Line,Col,ScopeVal, IAVal]
+    INST_FENCE = 36,       // FENCE: [ordering, synchscope]
+    INST_CMPXCHG_OLD = 37, // CMPXCHG: [ptrty, ptr, cmp, val, vol,
+    //            ordering, synchscope,
+    //            failure_ordering?, weak?]
+    INST_ATOMICRMW_OLD = 38, // ATOMICRMW: [ptrty,ptr,val, operation,
+    //             align, vol,
+    //             ordering, synchscope]
+    INST_RESUME = 39,         // RESUME:     [opval]
+    INST_LANDINGPAD_OLD = 40, // LANDINGPAD: [ty,val,val,num,id0,val0...]
+    INST_LOADATOMIC = 41,     // LOAD: [opty, op, align, vol,
+    //        ordering, synchscope]
+    INST_STOREATOMIC_OLD = 42, // STORE: [ptrty,ptr,val, align, vol
+    //         ordering, synchscope]
+    INST_GEP = 43,         // GEP:  [inbounds, n x operands]
+    INST_STORE = 44,       // STORE: [ptrty,ptr,valty,val, align, vol]
+    INST_STOREATOMIC = 45, // STORE: [ptrty,ptr,val, align, vol
+    INST_CMPXCHG = 46,     // CMPXCHG: [ptrty, ptr, cmp, val, vol,
+    //           success_ordering, synchscope,
+    //           failure_ordering, weak]
+    INST_LANDINGPAD = 47,  // LANDINGPAD: [ty,val,num,id0,val0...]
+    INST_CLEANUPRET = 48,  // CLEANUPRET: [val] or [val,bb#]
+    INST_CATCHRET = 49,    // CATCHRET: [val,bb#]
+    INST_CATCHPAD = 50,    // CATCHPAD: [bb#,bb#,num,args...]
+    INST_CLEANUPPAD = 51,  // CLEANUPPAD: [num,args...]
+    INST_CATCHSWITCH = 52, // CATCHSWITCH: [num,args...] or [num,args...,bb]
+    // 53 is unused.
+    // 54 is unused.
+    OPERAND_BUNDLE = 55, // OPERAND_BUNDLE: [tag#, value...]
+    INST_UNOP = 56,      // UNOP:       [opcode, ty, opval]
+    INST_CALLBR = 57,    // CALLBR:     [attr, cc, norm, transfs,
+    //              fnty, fnid, args...]
+    INST_FREEZE = 58,    // FREEZE: [opty, opval]
+    INST_ATOMICRMW = 59, // ATOMICRMW: [ptrty, ptr, valty, val,
+    //             operation, align, vol,
+    //             ordering, synchscope]
+    BLOCKADDR_USERS = 60, // BLOCKADDR_USERS: [value...]
+
+    DEBUG_RECORD_VALUE = 61, // [DILocation, DILocalVariable, DIExpression, ValueAsMetadata]
+    DEBUG_RECORD_DECLARE = 62, // [DILocation, DILocalVariable, DIExpression, ValueAsMetadata]
+    DEBUG_RECORD_ASSIGN = 63, // [DILocation, DILocalVariable, DIExpression, ValueAsMetadata,
+    //  DIAssignID, DIExpression (addr), ValueAsMetadata (addr)]
+    DEBUG_RECORD_VALUE_SIMPLE = 64, // [DILocation, DILocalVariable, DIExpression, Value]
+    DEBUG_RECORD_LABEL = 65,        // [DILocation, DILabel]
+}
+
+impl FunctionCodes {
+    pub fn from_u64(v: u64) -> Self {
+        match v {
+            1 => Self::DECLAREBLOCKS,
+            2 => Self::INST_BINOP,
+            3 => Self::INST_CAST,
+            4 => Self::INST_GEP_OLD,
+            5 => Self::INST_SELECT,
+            6 => Self::INST_EXTRACTELT,
+            7 => Self::INST_INSERTELT,
+            8 => Self::INST_SHUFFLEVEC,
+            9 => Self::INST_CMP,
+            10 => Self::INST_RET,
+            11 => Self::INST_BR,
+            12 => Self::INST_SWITCH,
+            13 => Self::INST_INVOKE,
+            // 14 is Unused.
+            15 => Self::INST_UNREACHABLE,
+            16 => Self::INST_PHI,
+            // 17 is Unused.
+            // 18 is Unused.
+            19 => Self::INST_ALLOCA,
+            20 => Self::INST_LOAD,
+            // 21 is Unused.
+            // 22 is Unused.
+            23 => Self::INST_VAARG,
+            24 => Self::INST_STORE_OLD,
+            // 25 is Unused.
+            26 => Self::INST_EXTRACTVAL,
+            27 => Self::INST_INSERTVAL,
+            28 => Self::INST_CMP2,
+            29 => Self::INST_VSELECT,
+            30 => Self::INST_INBOUNDS_GEP_OLD,
+            31 => Self::INST_INDIRECTBR,
+            // 32 is Unused.
+            33 => Self::DEBUG_LOC_AGAIN,
+            34 => Self::INST_CALL,
+            35 => Self::DEBUG_LOC,
+            36 => Self::INST_FENCE,
+            37 => Self::INST_CMPXCHG_OLD,
+            38 => Self::INST_ATOMICRMW_OLD,
+            39 => Self::INST_RESUME,
+            40 => Self::INST_LANDINGPAD_OLD,
+            41 => Self::INST_LOADATOMIC,
+            42 => Self::INST_STOREATOMIC_OLD,
+            43 => Self::INST_GEP,
+            44 => Self::INST_STORE,
+            45 => Self::INST_STOREATOMIC,
+            46 => Self::INST_CMPXCHG,
+            47 => Self::INST_LANDINGPAD,
+            48 => Self::INST_CLEANUPRET,
+            49 => Self::INST_CATCHRET,
+            50 => Self::INST_CATCHPAD,
+            51 => Self::INST_CLEANUPPAD,
+            52 => Self::INST_CATCHSWITCH,
+            // 53 is Unused.
+            // 54 is Unused.
+            55 => Self::OPERAND_BUNDLE,
+            56 => Self::INST_UNOP,
+            57 => Self::INST_CALLBR,
+            58 => Self::INST_FREEZE,
+            59 => Self::INST_ATOMICRMW,
+            60 => Self::BLOCKADDR_USERS,
+            61 => Self::DEBUG_RECORD_VALUE,
+            62 => Self::DEBUG_RECORD_DECLARE,
+            63 => Self::DEBUG_RECORD_ASSIGN,
+            64 => Self::DEBUG_RECORD_VALUE_SIMPLE,
+            65 => Self::DEBUG_RECORD_LABEL,
+            _ => unimplemented!(),
+        }
+    }
+}

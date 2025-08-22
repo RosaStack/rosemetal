@@ -8,7 +8,8 @@ use anyhow::{Result, anyhow};
 
 use crate::llvm_bitcode::{
     AttributeCode, AttributeKindCode, BitCursor, Bitstream, Block, BlockID, ConstantsCode, Fields,
-    IdentificationCode, MetadataCodes, ModuleCode, Record, Signature, StreamEntry, TypeCode,
+    FunctionCodes, IdentificationCode, MetadataCodes, ModuleCode, Record, Signature, StreamEntry,
+    TypeCode,
 };
 
 pub struct Parser {
@@ -563,6 +564,33 @@ impl Parser {
         }
     }
 
+    pub fn parse_function_body(&mut self, result: &mut AIRModule, block: Block) -> Result<()> {
+        let mut content = self.bitstream.next();
+        let mut id = 0;
+
+        loop {
+            match content {
+                Some(content) => match content? {
+                    StreamEntry::EndBlock | StreamEntry::EndOfStream => {
+                        return Ok(());
+                    }
+                    StreamEntry::Record(record) => match FunctionCodes::from_u64(record.code) {
+                        FunctionCodes::DECLAREBLOCKS => {
+                            if record.fields[0] == 0 {
+                                return Err(anyhow!("Invalid Declare Block value."));
+                            }
+                        }
+                        _ => todo!(),
+                    },
+                    _ => todo!(),
+                },
+                None => return Ok(()),
+            }
+
+            content = self.bitstream.next();
+        }
+    }
+
     pub fn parse_module_sub_block(
         &mut self,
         sub_block: Block,
@@ -577,6 +605,7 @@ impl Parser {
             BlockID::METADATA => self.parse_metadata_block(result)?,
             BlockID::OPERAND_BUNDLE_TAGS => self.parse_operand_bundle_tags(result)?,
             BlockID::SYNC_SCOPE_NAMES => self.parse_sync_scope_names(result)?,
+            BlockID::FUNCTION => self.parse_function_body(result, sub_block)?,
             _ => todo!("{:?}", BlockID::from_u64(sub_block.block_id)),
         }
 
