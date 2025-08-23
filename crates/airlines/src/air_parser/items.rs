@@ -50,9 +50,12 @@ pub struct AIRConstant {
 pub enum AIRConstantValue {
     #[default]
     Null,
+    Undefined,
+    Poison,
+    Unresolved(u64),
     Integer(u64),
     Float32(f32),
-    Aggregate(Vec<AIRConstant>),
+    Aggregate(Vec<Rc<RefCell<AIRConstant>>>),
     Array(Vec<AIRConstantValue>),
     Pointer(u64),
 }
@@ -312,7 +315,7 @@ pub struct AIRModule {
     pub string_table: Vec<Rc<RefCell<TableString>>>,
     pub global_variables: HashMap<u64, AIRGlobalVariable>,
     pub function_signatures: HashMap<u64, AIRFunctionSignature>,
-    pub constants: HashMap<u64, AIRConstant>,
+    pub constants: HashMap<u64, Rc<RefCell<AIRConstant>>>,
     pub undiscovered_data: Vec<UndiscoveredData>,
     pub metadata_kind_table: HashMap<u64, AIRMetadataKind>,
     pub metadata_strings: Vec<String>,
