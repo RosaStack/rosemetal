@@ -1,8 +1,8 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
 
-use crate::llvm_bitcode::{AttributeKindCode, Block, Fields};
+use crate::llvm_bitcode::{AttributeKindCode, Fields};
 
 #[derive(Debug, Default)]
 pub struct AIRFile {
@@ -24,10 +24,10 @@ pub struct TableString {
 
 #[derive(Debug, Default, Clone)]
 pub struct AIRGlobalVariable {
-    pub name: Rc<RefCell<TableString>>,
+    pub name: TableStringId,
     pub ty: AIRType,
     pub is_const: bool,
-    pub initializer: Rc<RefCell<AIRConstant>>,
+    pub initializer: AIRConstantId,
     pub linkage: LinkageCode,
     pub alignment: u64,
     pub section_index: u64,
@@ -55,7 +55,7 @@ pub enum AIRConstantValue {
     Unresolved(u64),
     Integer(u64),
     Float32(f32),
-    Aggregate(Vec<Rc<RefCell<AIRConstant>>>),
+    Aggregate(Vec<AIRConstantId>),
     Array(Vec<AIRConstantValue>),
     Pointer(u64),
 }
@@ -261,7 +261,7 @@ impl CallingConventionCode {
 
 #[derive(Debug, Default, Clone)]
 pub struct AIRFunctionSignature {
-    pub name: Rc<RefCell<TableString>>,
+    pub name: TableStringId,
     pub ty: AIRFunctionType,
     pub calling_convention: CallingConventionCode,
     pub is_proto: bool,
@@ -307,9 +307,22 @@ pub enum AIRMetadataConstant {
 pub enum AIRValue {
     #[default]
     Empty,
-    GlobalVariable(Rc<RefCell<AIRGlobalVariable>>),
-    Constant(Rc<RefCell<AIRConstant>>),
+    GlobalVariable(AIRGlobalVariableId),
+    Constant(AIRConstantId),
+    Function(AIRFunctionSignatureId),
 }
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TableStringId(pub u64);
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AIRGlobalVariableId(pub u64);
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AIRConstantId(pub u64);
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AIRFunctionSignatureId(pub u64);
 
 #[derive(Debug, Default, Clone)]
 pub struct AIRModule {
@@ -320,10 +333,10 @@ pub struct AIRModule {
     pub types: Vec<AIRType>,
     pub attributes: HashMap<u64, AIRAttribute>,
     pub entry_table: HashMap<u64, AIRAttrEntry>,
-    pub string_table: Vec<Rc<RefCell<TableString>>>,
-    pub global_variables: HashMap<u64, Rc<RefCell<AIRGlobalVariable>>>,
-    pub function_signatures: HashMap<u64, AIRFunctionSignature>,
-    pub constants: HashMap<u64, Rc<RefCell<AIRConstant>>>,
+    pub string_table: Vec<TableString>,
+    pub global_variables: HashMap<AIRGlobalVariableId, AIRGlobalVariable>,
+    pub function_signatures: HashMap<AIRFunctionSignatureId, AIRFunctionSignature>,
+    pub constants: HashMap<AIRConstantId, AIRConstant>,
     pub max_constants_id: u64,
     pub value_list: Vec<AIRValue>,
     pub undiscovered_data: Vec<UndiscoveredData>,
@@ -340,13 +353,13 @@ impl AIRModule {
         let string_offset = fields[0];
         let string_size = fields[1];
 
-        self.string_table.push(Rc::new(RefCell::new(TableString {
+        self.string_table.push(TableString {
             offset: string_offset,
             size: string_size,
             content: String::new(),
-        })));
+        });
 
-        let name = self.string_table.last().unwrap().clone();
+        let name = TableStringId(self.string_table.len() as u64 - 1);
         let ty = self.types[fields[2] as usize].clone();
         let is_const = fields[3] != 0;
 
@@ -371,18 +384,11 @@ impl AIRModule {
         let attribute_index = fields[13];
         let preemption_specifier = PreemptionSpecifierCode::from_u64(fields[14]);
 
-        let result = Rc::new(RefCell::new(AIRGlobalVariable {
+        let result = AIRGlobalVariable {
             name,
             ty: ty.clone(),
             is_const,
-            initializer: self
-                .constants
-                .entry(initializer_id)
-                .or_insert(Rc::new(RefCell::new(AIRConstant {
-                    ty,
-                    value: AIRConstantValue::Unresolved(initializer_id),
-                })))
-                .clone(),
+            initializer: AIRConstantId(initializer_id),
             linkage,
             alignment,
             section_index,
@@ -393,12 +399,15 @@ impl AIRModule {
             comdat,
             attribute_index,
             preemption_specifier,
-        }));
+        };
 
         self.value_list
-            .push(AIRValue::GlobalVariable(result.clone()));
+            .push(AIRValue::GlobalVariable(AIRGlobalVariableId(
+                self.max_global_id,
+            )));
 
-        self.global_variables.insert(self.max_global_id, result);
+        self.global_variables
+            .insert(AIRGlobalVariableId(self.max_global_id), result);
 
         self.max_global_id += 1;
     }
@@ -407,13 +416,13 @@ impl AIRModule {
         let string_offset = fields[0];
         let string_size = fields[1];
 
-        self.string_table.push(Rc::new(RefCell::new(TableString {
+        self.string_table.push(TableString {
             offset: string_offset,
             size: string_size,
             content: String::new(),
-        })));
+        });
 
-        let name = self.string_table.last().unwrap().clone();
+        let name = TableStringId(self.string_table.len() as u64 - 1);
         let ty = match self.types[fields[2] as usize].clone() {
             AIRType::Function(f) => f,
             _ => return Err(anyhow!("Function type not found.")),
@@ -455,7 +464,7 @@ impl AIRModule {
         let preemption_specifier = PreemptionSpecifierCode::from_u64(fields[16]);
 
         self.function_signatures.insert(
-            self.max_global_id,
+            AIRFunctionSignatureId(self.max_global_id),
             AIRFunctionSignature {
                 name,
                 ty,

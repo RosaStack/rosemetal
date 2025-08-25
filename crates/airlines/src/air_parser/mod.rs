@@ -278,30 +278,6 @@ impl Parser {
         }
     }
 
-    pub fn parse_aggregate(
-        &mut self,
-        constants: &mut HashMap<u64, Rc<RefCell<AIRConstant>>>,
-        record: &Record,
-        current_type: &AIRType,
-    ) -> Result<AIRConstant> {
-        let mut contents: Vec<Rc<RefCell<AIRConstant>>> = vec![];
-        for i in &record.fields {
-            let result = constants
-                .entry(*i)
-                .or_insert(Rc::new(RefCell::new(AIRConstant {
-                    ty: AIRType::Void,
-                    value: AIRConstantValue::Unresolved(*i),
-                })));
-
-            contents.push(result.clone());
-        }
-
-        Ok(AIRConstant {
-            ty: current_type.clone(),
-            value: AIRConstantValue::Aggregate(contents),
-        })
-    }
-
     pub fn parse_constant_value_with_type(
         result: &mut AIRModule,
         ty: &AIRType,
@@ -316,7 +292,7 @@ impl Parser {
                 return AIRConstantValue::Integer(value);
             }
             AIRType::Array(_) => {
-                return result.constants[&value].borrow().value.clone();
+                return result.constants[&AIRConstantId(value)].value.clone();
             }
             AIRType::Pointer(_, _) => {
                 return AIRConstantValue::Pointer(value);
@@ -356,144 +332,100 @@ impl Parser {
         let mut skip_add_one_in_settype = false;
         loop {
             match content {
-                Some(ucontent) => {
-                    match ucontent? {
-                        StreamEntry::EndBlock | StreamEntry::EndOfStream => break,
-                        StreamEntry::Record(record) => match ConstantsCode::from_u64(record.code) {
-                            ConstantsCode::SETTYPE => {
-                                current_type = module.types[record.fields[0] as usize].clone();
+                Some(ucontent) => match ucontent? {
+                    StreamEntry::EndBlock | StreamEntry::EndOfStream => break,
+                    StreamEntry::Record(record) => match ConstantsCode::from_u64(record.code) {
+                        ConstantsCode::SETTYPE => {
+                            current_type = module.types[record.fields[0] as usize].clone();
 
-                                if skip_add_one_in_settype {
-                                    content = self.bitstream.next();
-                                    skip_add_one_in_settype = false;
-                                    continue;
-                                }
+                            if skip_add_one_in_settype {
+                                content = self.bitstream.next();
+                                skip_add_one_in_settype = false;
+                                continue;
                             }
-                            ConstantsCode::INTEGER => {
-                                let value = module
-                                    .constants
-                                    .entry(module.max_constants_id)
-                                    .or_insert(Rc::new(RefCell::new(AIRConstant {
-                                        ty: AIRType::Void,
-                                        value: AIRConstantValue::Unresolved(
-                                            module.max_constants_id,
-                                        ),
-                                    })));
-
-                                let mut value = value.borrow_mut();
-                                value.ty = current_type.clone();
-                                value.value = AIRConstantValue::Integer(record.fields[0]);
-                            }
-                            ConstantsCode::NULL => {
-                                let value = module
-                                    .constants
-                                    .entry(module.max_constants_id)
-                                    .or_insert(Rc::new(RefCell::new(AIRConstant {
-                                        ty: AIRType::Void,
-                                        value: AIRConstantValue::Unresolved(
-                                            module.max_constants_id,
-                                        ),
-                                    })));
-
-                                let mut value = value.borrow_mut();
-                                value.ty = current_type.clone();
-                                value.value = AIRConstantValue::Null;
-                            }
-                            ConstantsCode::UNDEF => {
-                                let value = module
-                                    .constants
-                                    .entry(module.max_constants_id)
-                                    .or_insert(Rc::new(RefCell::new(AIRConstant {
-                                        ty: AIRType::Void,
-                                        value: AIRConstantValue::Unresolved(
-                                            module.max_constants_id,
-                                        ),
-                                    })));
-
-                                let mut value = value.borrow_mut();
-                                value.ty = current_type.clone();
-                                value.value = AIRConstantValue::Undefined;
-                            }
-                            ConstantsCode::AGGREGATE => {
-                                let aggregate = self.parse_aggregate(
-                                    &mut module.constants,
-                                    &record,
-                                    &current_type,
-                                )?;
-
-                                let value = module
-                                    .constants
-                                    .entry(module.max_constants_id)
-                                    .or_insert(Rc::new(RefCell::new(AIRConstant {
-                                        ty: AIRType::Void,
-                                        value: AIRConstantValue::Unresolved(
-                                            module.max_constants_id,
-                                        ),
-                                    })));
-
-                                *value.borrow_mut() = aggregate;
-                                skip_add_one_in_settype = true;
-                            }
-                            ConstantsCode::DATA => {
-                                let data = AIRConstant {
+                        }
+                        ConstantsCode::INTEGER => {
+                            let _ = module.constants.insert(
+                                AIRConstantId(module.max_constants_id),
+                                AIRConstant {
                                     ty: current_type.clone(),
-                                    value: self.parse_constant_data(
-                                        module,
-                                        &current_type,
-                                        record.fields,
-                                    )?,
-                                };
-
-                                let value = module
-                                    .constants
-                                    .entry(module.max_constants_id)
-                                    .or_insert(Rc::new(RefCell::new(AIRConstant {
-                                        ty: AIRType::Void,
-                                        value: AIRConstantValue::Unresolved(
-                                            module.max_constants_id,
-                                        ),
-                                    })));
-                                *value.borrow_mut() = data;
-                                skip_add_one_in_settype = true;
+                                    value: AIRConstantValue::Integer(record.fields[0]),
+                                },
+                            );
+                        }
+                        ConstantsCode::NULL => {
+                            let _ = module.constants.insert(
+                                AIRConstantId(module.max_constants_id),
+                                AIRConstant {
+                                    ty: current_type.clone(),
+                                    value: AIRConstantValue::Null,
+                                },
+                            );
+                        }
+                        ConstantsCode::UNDEF => {
+                            let _ = module.constants.insert(
+                                AIRConstantId(module.max_constants_id),
+                                AIRConstant {
+                                    ty: current_type.clone(),
+                                    value: AIRConstantValue::Undefined,
+                                },
+                            );
+                        }
+                        ConstantsCode::AGGREGATE => {
+                            let mut contents = vec![];
+                            for i in record.fields {
+                                contents.push(AIRConstantId(i));
                             }
-                            ConstantsCode::POISON => {
-                                let value = module
-                                    .constants
-                                    .entry(module.max_constants_id)
-                                    .or_insert(Rc::new(RefCell::new(AIRConstant {
-                                        ty: AIRType::Void,
-                                        value: AIRConstantValue::Unresolved(
-                                            module.max_constants_id,
-                                        ),
-                                    })));
 
-                                let mut value = value.borrow_mut();
-                                value.ty = current_type.clone();
-                                value.value = AIRConstantValue::Poison;
-                            }
-                            ConstantsCode::FLOAT => {
-                                let value = module
-                                    .constants
-                                    .entry(module.max_constants_id)
-                                    .or_insert(Rc::new(RefCell::new(AIRConstant {
-                                        ty: AIRType::Void,
-                                        value: AIRConstantValue::Unresolved(
-                                            module.max_constants_id,
-                                        ),
-                                    })));
+                            let _ = module.constants.insert(
+                                AIRConstantId(module.max_constants_id),
+                                AIRConstant {
+                                    ty: current_type.clone(),
+                                    value: AIRConstantValue::Aggregate(contents),
+                                },
+                            );
+                            skip_add_one_in_settype = true;
+                        }
+                        ConstantsCode::DATA => {
+                            let data = AIRConstant {
+                                ty: current_type.clone(),
+                                value: self.parse_constant_data(
+                                    module,
+                                    &current_type,
+                                    record.fields,
+                                )?,
+                            };
 
-                                let mut value = value.borrow_mut();
-                                value.ty = current_type.clone();
-                                value.value = AIRConstantValue::Float32(f32::from_le_bytes(
-                                    (record.fields[0] as u32).to_le_bytes(),
-                                ));
-                            }
-                            _ => todo!("{:#?}", ConstantsCode::from_u64(record.code)),
-                        },
+                            let _ = module
+                                .constants
+                                .insert(AIRConstantId(module.max_constants_id), data);
+                            skip_add_one_in_settype = true;
+                        }
+                        ConstantsCode::POISON => {
+                            let _ = module.constants.insert(
+                                AIRConstantId(module.max_constants_id),
+                                AIRConstant {
+                                    ty: current_type.clone(),
+                                    value: AIRConstantValue::Poison,
+                                },
+                            );
+                        }
+                        ConstantsCode::FLOAT => {
+                            let _ = module.constants.insert(
+                                AIRConstantId(module.max_constants_id),
+                                AIRConstant {
+                                    ty: current_type.clone(),
+                                    value: AIRConstantValue::Float32(f32::from_le_bytes(
+                                        (record.fields[0] as u32).to_le_bytes(),
+                                    )),
+                                },
+                            );
+                        }
+                        _ => todo!("{:#?}", ConstantsCode::from_u64(record.code)),
+                    },
 
-                        _ => todo!(),
-                    }
-                }
+                    _ => todo!(),
+                },
                 None => break,
             }
 
@@ -688,7 +620,7 @@ impl Parser {
                             id = record.fields[0] + 1;
                         }
                         FunctionCodes::INST_CAST => {
-                            let first = result.constants.get(&record.fields[0]);
+                            let first = result.constants.get(&AIRConstantId(record.fields[0]));
                             let second = result.types[record.fields[1] as usize].clone();
                             todo!("{:?} | {:?} -> {:?}", record.fields, first, second);
                         }
