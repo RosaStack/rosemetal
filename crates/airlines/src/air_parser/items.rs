@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 
 use crate::llvm_bitcode::{AttributeKindCode, Block, Fields};
 
@@ -27,7 +27,7 @@ pub struct AIRGlobalVariable {
     pub name: Rc<RefCell<TableString>>,
     pub ty: AIRType,
     pub is_const: bool,
-    pub initializer_id: u64,
+    pub initializer: Rc<RefCell<AIRConstant>>,
     pub linkage: LinkageCode,
     pub alignment: u64,
     pub section_index: u64,
@@ -262,7 +262,7 @@ impl CallingConventionCode {
 #[derive(Debug, Default, Clone)]
 pub struct AIRFunctionSignature {
     pub name: Rc<RefCell<TableString>>,
-    pub ty: AIRType,
+    pub ty: AIRFunctionType,
     pub calling_convention: CallingConventionCode,
     pub is_proto: bool,
     pub linkage: LinkageCode,
@@ -304,6 +304,14 @@ pub enum AIRMetadataConstant {
 }
 
 #[derive(Debug, Default, Clone)]
+pub enum AIRValue {
+    #[default]
+    Empty,
+    GlobalVariable(Rc<RefCell<AIRGlobalVariable>>),
+    Constant(Rc<RefCell<AIRConstant>>),
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct AIRModule {
     pub version: u64,
     pub triple: String,
@@ -313,9 +321,11 @@ pub struct AIRModule {
     pub attributes: HashMap<u64, AIRAttribute>,
     pub entry_table: HashMap<u64, AIRAttrEntry>,
     pub string_table: Vec<Rc<RefCell<TableString>>>,
-    pub global_variables: HashMap<u64, AIRGlobalVariable>,
+    pub global_variables: HashMap<u64, Rc<RefCell<AIRGlobalVariable>>>,
     pub function_signatures: HashMap<u64, AIRFunctionSignature>,
     pub constants: HashMap<u64, Rc<RefCell<AIRConstant>>>,
+    pub max_constants_id: u64,
+    pub value_list: Vec<AIRValue>,
     pub undiscovered_data: Vec<UndiscoveredData>,
     pub metadata_kind_table: HashMap<u64, AIRMetadataKind>,
     pub metadata_strings: Vec<String>,
@@ -361,30 +371,39 @@ impl AIRModule {
         let attribute_index = fields[13];
         let preemption_specifier = PreemptionSpecifierCode::from_u64(fields[14]);
 
-        self.global_variables.insert(
-            self.max_global_id,
-            AIRGlobalVariable {
-                name,
-                ty,
-                is_const,
-                initializer_id,
-                linkage,
-                alignment,
-                section_index,
-                visibility,
-                thread_local,
-                unnamed_addr,
-                dll_storage_class,
-                comdat,
-                attribute_index,
-                preemption_specifier,
-            },
-        );
+        let result = Rc::new(RefCell::new(AIRGlobalVariable {
+            name,
+            ty: ty.clone(),
+            is_const,
+            initializer: self
+                .constants
+                .entry(initializer_id)
+                .or_insert(Rc::new(RefCell::new(AIRConstant {
+                    ty,
+                    value: AIRConstantValue::Unresolved(initializer_id),
+                })))
+                .clone(),
+            linkage,
+            alignment,
+            section_index,
+            visibility,
+            thread_local,
+            unnamed_addr,
+            dll_storage_class,
+            comdat,
+            attribute_index,
+            preemption_specifier,
+        }));
+
+        self.value_list
+            .push(AIRValue::GlobalVariable(result.clone()));
+
+        self.global_variables.insert(self.max_global_id, result);
 
         self.max_global_id += 1;
     }
 
-    pub fn parse_function_signature(&mut self, fields: Fields) {
+    pub fn parse_function_signature(&mut self, fields: Fields) -> Result<()> {
         let string_offset = fields[0];
         let string_size = fields[1];
 
@@ -395,7 +414,10 @@ impl AIRModule {
         })));
 
         let name = self.string_table.last().unwrap().clone();
-        let ty = self.types[fields[2] as usize].clone();
+        let ty = match self.types[fields[2] as usize].clone() {
+            AIRType::Function(f) => f,
+            _ => return Err(anyhow!("Function type not found.")),
+        };
         let calling_convention = CallingConventionCode::from_u64(fields[3]);
         let is_proto = fields[4] != 0;
         let linkage = LinkageCode::from_u64(fields[5]);
@@ -453,12 +475,16 @@ impl AIRModule {
                 preemption_specifier,
             },
         );
+
+        self.max_global_id += 1;
+
+        Ok(())
     }
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct AIRAttrEntry {
-    pub groups: Vec<u64>,
+    pub groups: Vec<AIRAttribute>,
 }
 
 #[derive(Debug, Default, Clone)]
