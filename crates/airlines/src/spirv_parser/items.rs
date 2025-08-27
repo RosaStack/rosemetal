@@ -40,7 +40,7 @@ pub enum SpirVMemoryModel {
     Vulkan,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub enum SpirVCapability {
     #[default]
     Matrix,

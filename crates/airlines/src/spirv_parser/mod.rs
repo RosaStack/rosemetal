@@ -1,5 +1,7 @@
 pub mod items;
 
+use std::u32;
+
 use anyhow::{Result, anyhow};
 pub use items::*;
 
@@ -8,6 +10,7 @@ pub struct Parser {
     signature: SpirVSignature,
     content: Vec<u8>,
     operands: Vec<SpirVOp>,
+    capabilities: Vec<SpirVCapability>,
 }
 
 impl Parser {
@@ -17,6 +20,7 @@ impl Parser {
             signature: SpirVSignature::default(),
             content,
             operands: vec![],
+            capabilities: vec![],
         }
     }
 
@@ -91,8 +95,64 @@ impl Parser {
         ]);
 
         Ok(match instruction {
+            0 => SpirVCapability::Matrix,
             1 => SpirVCapability::Shader,
-            _ => todo!(),
+            2 => SpirVCapability::Geometry,
+            3 => SpirVCapability::Tessellation,
+            4 => SpirVCapability::Addresses,
+            5 => SpirVCapability::Linkage,
+            6 => SpirVCapability::Kernel,
+            7 => SpirVCapability::Vector16,
+            8 => SpirVCapability::Float16Buffer,
+            9 => SpirVCapability::Float16,
+            10 => SpirVCapability::Float64,
+            11 => SpirVCapability::Int64,
+            12 => SpirVCapability::Int64Atomics,
+            13 => SpirVCapability::ImageBasic,
+            14 => SpirVCapability::ImageReadWrite,
+            15 => SpirVCapability::ImageMipmap,
+            17 => SpirVCapability::Pipes,
+            18 => SpirVCapability::Groups,
+            19 => SpirVCapability::DeviceEnqueue,
+            20 => SpirVCapability::LiteralSampler,
+            21 => SpirVCapability::AtomicStorage,
+            22 => SpirVCapability::Int16,
+            23 => SpirVCapability::TessellationPointSize,
+            24 => SpirVCapability::GeometryPointSize,
+            25 => SpirVCapability::ImageGatherExtended,
+            27 => SpirVCapability::StorageImageMultisample,
+            28 => SpirVCapability::UniformBufferArrayDynamicIndexing,
+            29 => SpirVCapability::SampledImageArrayDynamicIndexing,
+            30 => SpirVCapability::StorageBufferArrayDynamicIndexing,
+            31 => SpirVCapability::StorageImageArrayDynamicIndexing,
+            32 => SpirVCapability::ClipDistance,
+            33 => SpirVCapability::CullDistance,
+            34 => SpirVCapability::ImageCubeArray,
+            35 => SpirVCapability::SampleRateShading,
+            36 => SpirVCapability::ImageRect,
+            37 => SpirVCapability::SampledRect,
+            38 => SpirVCapability::GenericPointer,
+            39 => SpirVCapability::Int8,
+            40 => SpirVCapability::InputAttachment,
+            41 => SpirVCapability::SparseResidency,
+            42 => SpirVCapability::MinLod,
+            43 => SpirVCapability::Sampled1D,
+            44 => SpirVCapability::Image1D,
+            45 => SpirVCapability::SampledCubeArray,
+            46 => SpirVCapability::SampledBuffer,
+            47 => SpirVCapability::ImageBuffer,
+            48 => SpirVCapability::ImageMSArray,
+            49 => SpirVCapability::StorageImageExtendedFormats,
+            50 => SpirVCapability::ImageQuery,
+            51 => SpirVCapability::DerivativeControl,
+            52 => SpirVCapability::InterpolationFunction,
+            53 => SpirVCapability::TransformFeedback,
+            54 => SpirVCapability::GeometryStreams,
+            55 => SpirVCapability::StorageImageReadWithoutFormat,
+            56 => SpirVCapability::StorageImageWriteWithoutFormat,
+            57 => SpirVCapability::MultiViewport,
+            58.. => todo!("Capabilities from 1.1 and above and Vendor Specific."),
+            _ => return Err(anyhow!("Invalid Capability ID.")),
         })
     }
 
@@ -185,13 +245,132 @@ impl Parser {
         Ok(result)
     }
 
+    pub fn add_capability_to(
+        capability: SpirVCapability,
+        capabilities: &mut Vec<SpirVCapability>,
+    ) -> Result<()> {
+        let mut is_value_new = true;
+        for i in &mut *capabilities {
+            if *i == capability {
+                is_value_new = false;
+            }
+        }
+
+        if is_value_new {
+            capabilities.push(capability);
+        }
+
+        Ok(())
+    }
+
+    pub fn update_implicit_capabilities(capabilities: &mut Vec<SpirVCapability>) -> Result<()> {
+        // ========================================================
+        // TODO: Add version and vendor specific implicit declares.
+        // ========================================================
+
+        let mut push_capabilities: Vec<SpirVCapability> = vec![];
+        for i in &mut *capabilities {
+            match i {
+                SpirVCapability::Shader => {
+                    Self::add_capability_to(SpirVCapability::Matrix, &mut push_capabilities)?
+                }
+                SpirVCapability::Geometry
+                | SpirVCapability::Tessellation
+                | SpirVCapability::AtomicStorage
+                | SpirVCapability::ImageGatherExtended
+                | SpirVCapability::StorageImageMultisample
+                | SpirVCapability::UniformBufferArrayDynamicIndexing
+                | SpirVCapability::SampledImageArrayDynamicIndexing
+                | SpirVCapability::StorageBufferArrayDynamicIndexing
+                | SpirVCapability::StorageImageArrayDynamicIndexing
+                | SpirVCapability::ClipDistance
+                | SpirVCapability::CullDistance
+                | SpirVCapability::SampleRateShading
+                | SpirVCapability::SampledRect
+                | SpirVCapability::InputAttachment
+                | SpirVCapability::SparseResidency
+                | SpirVCapability::MinLod
+                | SpirVCapability::SampledCubeArray
+                | SpirVCapability::ImageMSArray
+                | SpirVCapability::StorageImageExtendedFormats
+                | SpirVCapability::ImageQuery
+                | SpirVCapability::DerivativeControl
+                | SpirVCapability::InterpolationFunction
+                | SpirVCapability::TransformFeedback
+                | SpirVCapability::StorageImageReadWithoutFormat
+                | SpirVCapability::StorageImageWriteWithoutFormat => {
+                    Self::add_capability_to(SpirVCapability::Shader, &mut push_capabilities)?
+                }
+                SpirVCapability::Vector16
+                | SpirVCapability::Float16Buffer
+                | SpirVCapability::ImageBasic
+                | SpirVCapability::Pipes
+                | SpirVCapability::DeviceEnqueue
+                | SpirVCapability::LiteralSampler => {
+                    Self::add_capability_to(SpirVCapability::Kernel, &mut push_capabilities)?
+                }
+                SpirVCapability::Int64Atomics => {
+                    Self::add_capability_to(SpirVCapability::Int64, &mut push_capabilities)?
+                }
+                SpirVCapability::ImageReadWrite | SpirVCapability::ImageMipmap => {
+                    Self::add_capability_to(SpirVCapability::ImageBasic, &mut push_capabilities)?
+                }
+                SpirVCapability::TessellationPointSize => {
+                    Self::add_capability_to(SpirVCapability::Tessellation, &mut push_capabilities)?
+                }
+                SpirVCapability::GeometryPointSize
+                | SpirVCapability::GeometryStreams
+                | SpirVCapability::MultiViewport => {
+                    Self::add_capability_to(SpirVCapability::Geometry, &mut push_capabilities)?
+                }
+                SpirVCapability::ImageCubeArray => Self::add_capability_to(
+                    SpirVCapability::SampledCubeArray,
+                    &mut push_capabilities,
+                )?,
+                SpirVCapability::ImageRect => {
+                    Self::add_capability_to(SpirVCapability::SampledRect, &mut push_capabilities)?
+                }
+                SpirVCapability::GenericPointer => {
+                    Self::add_capability_to(SpirVCapability::Addresses, &mut push_capabilities)?
+                }
+                SpirVCapability::Image1D => {
+                    Self::add_capability_to(SpirVCapability::Sampled1D, &mut push_capabilities)?
+                }
+                SpirVCapability::ImageBuffer => {
+                    Self::add_capability_to(SpirVCapability::SampledBuffer, &mut push_capabilities)?
+                }
+                _ => {}
+            }
+        }
+
+        if push_capabilities.len() != 0 {
+            Self::update_implicit_capabilities(&mut push_capabilities)?;
+        }
+
+        for i in push_capabilities {
+            Self::add_capability_to(i, capabilities)?;
+        }
+
+        Ok(())
+    }
+
     pub fn start(&mut self) -> Result<()> {
         self.signature = self.get_signature()?;
         let mut operands: Vec<SpirVOp> = vec![];
 
         let pos = self.position as usize;
         while pos < self.content.len() {
-            operands.push(self.parse_op()?);
+            let op = self.parse_op()?;
+
+            match &op.value {
+                SpirVValue::Capability(capability) => {
+                    Self::add_capability_to(capability.clone(), &mut self.capabilities)?;
+                    Self::update_implicit_capabilities(&mut self.capabilities)?;
+                }
+                _ => {}
+            }
+
+            operands.push(op);
         }
 
         todo!("{:?}", self.signature);
