@@ -1,19 +1,15 @@
 pub mod items;
 
-use std::{
-    cell::{RefCell, UnsafeCell},
-    collections::HashMap,
-    rc::Rc,
-};
+use std::collections::HashMap;
 
 pub use items::*;
 
 use anyhow::{Result, anyhow};
 
 use crate::llvm_bitcode::{
-    AttributeCode, AttributeKindCode, BitCursor, Bitstream, Block, BlockID, ConstantsCode, Fields,
-    FunctionCodes, IdentificationCode, MetadataCodes, ModuleCode, Record, Signature, StreamEntry,
-    TypeCode,
+    AttributeCode, AttributeKindCode, BitCursor, Bitstream, Block, BlockID, CastOpCode,
+    ConstantsCode, Fields, FunctionCodes, GEPNoWrapFlags, IdentificationCode, MetadataCodes,
+    ModuleCode, Record, Signature, StreamEntry, TypeCode,
 };
 
 pub struct Parser {
@@ -31,19 +27,96 @@ impl Parser {
         })
     }
 
-    pub fn parse_block(&mut self, b: Block) -> Result<AIRItem> {
+    pub fn parse_blob(fields: Fields) -> AIRBlob {
+        let mut result: Vec<u8> = vec![];
+
+        for i in fields {
+            result.push(i as u8);
+        }
+
+        AIRBlob { content: result }
+    }
+
+    pub fn parse_blob_vec(&mut self) -> Result<Vec<AIRBlob>> {
+        let mut content = self.bitstream.next();
+        let mut result: Vec<AIRBlob> = vec![];
+
+        loop {
+            match content {
+                Some(content) => match content? {
+                    StreamEntry::EndBlock | StreamEntry::EndOfStream => {
+                        return Ok(result);
+                    }
+                    StreamEntry::Record(record) => {
+                        // TODO: Please add a check so it doesn't always
+                        // assume that its a blob.
+                        result.push(Self::parse_blob(record.fields));
+                    }
+                    _ => todo!(),
+                },
+                None => return Ok(result),
+            }
+
+            content = self.bitstream.next();
+        }
+    }
+
+    pub fn parse_string_table_contents(
+        &mut self,
+        module: &mut Option<AIRModule>,
+    ) -> Result<AIRStringTable> {
+        let mut content = self.bitstream.next();
+        let mut strings: Vec<String> = vec![];
+
+        loop {
+            match content {
+                Some(content) => match content? {
+                    StreamEntry::EndBlock | StreamEntry::EndOfStream => {
+                        return Ok(AIRStringTable { strings });
+                    }
+                    StreamEntry::Record(record) => match module {
+                        Some(module) => {
+                            let string = Self::parse_string(record.fields);
+                            for i in &mut module.string_table {
+                                let begin = i.offset;
+                                let end = i.offset + i.size;
+                                i.content = string[begin as usize..end as usize].to_string();
+                            }
+                            strings.push(string);
+                        }
+                        None => return Err(anyhow!("Module not found.")),
+                    },
+                    _ => todo!(),
+                },
+                None => return Ok(AIRStringTable { strings }),
+            }
+
+            content = self.bitstream.next();
+        }
+    }
+
+    pub fn parse_block(&mut self, b: Block, module: &mut Option<AIRModule>) -> Result<AIRItem> {
         match BlockID::from_u64(b.block_id) {
             BlockID::IDENTIFICATION => Ok(AIRItem::IdentificationBlock(
                 self.parse_identification_block()?,
             )),
             BlockID::MODULE => Ok(AIRItem::Module(self.parse_module()?)),
+            BlockID::SYMTAB => Ok(AIRItem::SymTabBlock(AIRSymTabBlock {
+                blobs: self.parse_blob_vec()?,
+            })),
+            BlockID::STRTAB => Ok(AIRItem::StringTable(
+                self.parse_string_table_contents(module)?,
+            )),
             _ => todo!("{:?} not implemented yet.", b),
         }
     }
 
     pub fn parse_module_record(&mut self, record: Record, result: &mut AIRModule) -> Result<()> {
         match ModuleCode::from_u64(record.code) {
-            ModuleCode::VERSION => result.version = record.fields[0],
+            ModuleCode::VERSION => {
+                result.version = record.fields[0];
+                result.use_relative_ids = result.version >= 1;
+            }
             ModuleCode::TRIPLE => result.triple = Self::parse_string(record.fields),
             ModuleCode::DATALAYOUT => result.data_layout = Self::parse_string(record.fields),
             ModuleCode::SOURCE_FILENAME => {
@@ -352,6 +425,11 @@ impl Parser {
                                     value: AIRConstantValue::Integer(record.fields[0]),
                                 },
                             );
+
+                            module.assign_value_to_value_list(
+                                module.value_list.len(),
+                                AIRValue::Constant(AIRConstantId(module.max_constants_id)),
+                            );
                         }
                         ConstantsCode::NULL => {
                             let _ = module.constants.insert(
@@ -361,6 +439,11 @@ impl Parser {
                                     value: AIRConstantValue::Null,
                                 },
                             );
+
+                            module.assign_value_to_value_list(
+                                module.value_list.len(),
+                                AIRValue::Constant(AIRConstantId(module.max_constants_id)),
+                            );
                         }
                         ConstantsCode::UNDEF => {
                             let _ = module.constants.insert(
@@ -369,6 +452,11 @@ impl Parser {
                                     ty: current_type.clone(),
                                     value: AIRConstantValue::Undefined,
                                 },
+                            );
+
+                            module.assign_value_to_value_list(
+                                module.value_list.len(),
+                                AIRValue::Constant(AIRConstantId(module.max_constants_id)),
                             );
                         }
                         ConstantsCode::AGGREGATE => {
@@ -385,6 +473,11 @@ impl Parser {
                                 },
                             );
                             skip_add_one_in_settype = true;
+
+                            module.assign_value_to_value_list(
+                                module.value_list.len(),
+                                AIRValue::Constant(AIRConstantId(module.max_constants_id)),
+                            );
                         }
                         ConstantsCode::DATA => {
                             let data = AIRConstant {
@@ -400,6 +493,11 @@ impl Parser {
                                 .constants
                                 .insert(AIRConstantId(module.max_constants_id), data);
                             skip_add_one_in_settype = true;
+
+                            module.assign_value_to_value_list(
+                                module.value_list.len(),
+                                AIRValue::Constant(AIRConstantId(module.max_constants_id)),
+                            );
                         }
                         ConstantsCode::POISON => {
                             let _ = module.constants.insert(
@@ -408,6 +506,11 @@ impl Parser {
                                     ty: current_type.clone(),
                                     value: AIRConstantValue::Poison,
                                 },
+                            );
+
+                            module.assign_value_to_value_list(
+                                module.value_list.len(),
+                                AIRValue::Constant(AIRConstantId(module.max_constants_id)),
                             );
                         }
                         ConstantsCode::FLOAT => {
@@ -419,6 +522,11 @@ impl Parser {
                                         (record.fields[0] as u32).to_le_bytes(),
                                     )),
                                 },
+                            );
+
+                            module.assign_value_to_value_list(
+                                module.value_list.len(),
+                                AIRValue::Constant(AIRConstantId(module.max_constants_id)),
                             );
                         }
                         _ => todo!("{:#?}", ConstantsCode::from_u64(record.code)),
@@ -498,6 +606,51 @@ impl Parser {
         }
 
         Ok(result)
+    }
+
+    pub fn parse_value_symtab(&mut self, _result: &mut AIRModule) -> Result<()> {
+        let mut content = self.bitstream.next();
+
+        loop {
+            match content {
+                Some(content) => match content? {
+                    StreamEntry::EndBlock | StreamEntry::EndOfStream => return Ok(()),
+                    StreamEntry::Record(_record) => {
+                        // TODO: Parse Value SymTab.
+                    }
+                    _ => todo!(),
+                },
+                None => return Ok(()),
+            }
+
+            content = self.bitstream.next();
+        }
+    }
+
+    pub fn parse_metadata_attachment(&mut self, result: &mut AIRModule) -> Result<()> {
+        let mut content = self.bitstream.next();
+
+        loop {
+            match content {
+                Some(content) => match content? {
+                    StreamEntry::EndBlock | StreamEntry::EndOfStream => return Ok(()),
+                    StreamEntry::Record(record) => {
+                        if !matches!(
+                            MetadataCodes::from_u64(record.code),
+                            MetadataCodes::ATTACHMENT
+                        ) {
+                            return Err(anyhow!("Only accepts Attachments, for now..."));
+                        }
+
+                        // TODO: Parse Metadata Attachments.
+                    }
+                    _ => todo!(),
+                },
+                None => return Ok(()),
+            }
+
+            content = self.bitstream.next();
+        }
     }
 
     pub fn parse_metadata_block(&mut self, result: &mut AIRModule) -> Result<()> {
@@ -601,15 +754,42 @@ impl Parser {
         }
     }
 
+    pub fn get_value(
+        &mut self,
+        result: &mut AIRModule,
+        field: u64,
+        next_value_no: usize,
+    ) -> AIRValueId {
+        match result.use_relative_ids {
+            true => AIRValueId(next_value_no as u64 - field),
+            false => AIRValueId(field),
+        }
+    }
+
     pub fn parse_function_body(&mut self, result: &mut AIRModule, block: Block) -> Result<()> {
         let mut content = self.bitstream.next();
-        let mut id = 0;
+
+        let id = result.current_function_local_id as usize;
+        let function_signature = &result.function_signatures[id];
+        let mut contents: Vec<AIRValueId> = vec![];
+
+        let mut count = 0;
+        for i in &function_signature.ty.params {
+            result.value_list.push(AIRValue::Argument(AIRLocal {
+                id: count,
+                ty: i.clone(),
+                value: None,
+            }));
+            count += 1;
+        }
+
+        let mut next_value_no = result.value_list.len();
 
         loop {
             match content {
                 Some(content) => match content? {
                     StreamEntry::EndBlock | StreamEntry::EndOfStream => {
-                        return Ok(());
+                        break;
                     }
                     StreamEntry::Record(record) => match FunctionCodes::from_u64(record.code) {
                         FunctionCodes::DECLAREBLOCKS => {
@@ -617,29 +797,141 @@ impl Parser {
                                 return Err(anyhow!("Invalid Declare Block value."));
                             }
 
-                            id = record.fields[0] + 1;
+                            result.function_bodies.resize(
+                                result.function_bodies.len() + record.fields[0] as usize,
+                                AIRFunctionBody::default(),
+                            );
                         }
                         FunctionCodes::INST_CAST => {
-                            let first = result.constants.get(&AIRConstantId(record.fields[0]));
-                            let second = result.types[record.fields[1] as usize].clone();
-                            todo!("{:?} | {:?} -> {:?}", record.fields, first, second);
+                            let value = self.get_value(result, record.fields[0], next_value_no);
+                            let cast_to_type = result.types[record.fields[1] as usize].clone();
+                            let cast_code = CastOpCode::from_u64(record.fields[2]);
+
+                            let cast = AIRValue::Cast(AIRCast {
+                                value,
+                                cast_to_type,
+                                cast_code,
+                            });
+
+                            result.value_list.push(cast);
+                            contents.push(AIRValueId(result.value_list.len() as u64 - 1));
+
+                            next_value_no += 1;
+                        }
+                        FunctionCodes::INST_GEP => {
+                            let no_wrap_flags = GEPNoWrapFlags::from_u64(record.fields[0]);
+                            let ty = result.types[record.fields[1] as usize].clone();
+
+                            let base_ptr_value =
+                                self.get_value(result, record.fields[2], next_value_no);
+
+                            let mut indices: Vec<AIRValueId> = vec![];
+                            for i in 3..record.fields.len() {
+                                indices.push(self.get_value(
+                                    result,
+                                    record.fields[i],
+                                    next_value_no,
+                                ));
+                            }
+
+                            let gep = AIRValue::GetElementPtr(AIRGetElementPtr {
+                                no_wrap_flags,
+                                ty,
+                                base_ptr_value,
+                                indices,
+                            });
+
+                            result.value_list.push(gep);
+                            contents.push(AIRValueId(result.value_list.len() as u64 - 1));
+
+                            next_value_no += 1;
+                        }
+                        FunctionCodes::INST_LOAD => {
+                            let op = self.get_value(result, record.fields[0], next_value_no);
+                            let ty = result.types[record.fields[1] as usize].clone();
+
+                            let alignment = match record.fields[2].checked_sub(1) {
+                                Some(result) => 2_u64.pow(result as u32),
+                                None => 0,
+                            };
+
+                            let vol = record.fields[3];
+
+                            result.value_list.push(AIRValue::Load(AIRLoad {
+                                op,
+                                ty,
+                                alignment,
+                                vol,
+                            }));
+                            contents.push(AIRValueId(result.value_list.len() as u64 - 1));
+
+                            next_value_no += 1;
+                        }
+                        FunctionCodes::INST_SHUFFLEVEC => {
+                            let vec1 = self.get_value(result, record.fields[0], next_value_no);
+                            let vec2 = self.get_value(result, record.fields[1], next_value_no);
+                            let mask = self.get_value(result, record.fields[2], next_value_no);
+
+                            result.value_list.push(AIRValue::ShuffleVec(AIRShuffleVec {
+                                vec1,
+                                vec2,
+                                mask,
+                            }));
+                            contents.push(AIRValueId(result.value_list.len() as u64 - 1));
+
+                            next_value_no += 1;
+                        }
+                        FunctionCodes::INST_INSERTVAL => {
+                            let value1 = self.get_value(result, record.fields[0], next_value_no);
+                            let value2 = self.get_value(result, record.fields[1], next_value_no);
+                            let insert_value_idx = record.fields[2];
+
+                            result.value_list.push(AIRValue::InsertVal(AIRInsertVal {
+                                value1,
+                                value2,
+                                insert_value_idx,
+                            }));
+                            contents.push(AIRValueId(result.value_list.len() as u64 - 1));
+
+                            next_value_no += 1;
+                        }
+                        FunctionCodes::INST_RET => {
+                            let value = self.get_value(result, record.fields[0], next_value_no);
+
+                            result
+                                .value_list
+                                .push(AIRValue::Return(AIRReturn { value }));
+                            contents.push(AIRValueId(result.value_list.len() as u64 - 1));
+
+                            next_value_no += 1;
                         }
                         _ => todo!("{:?}", FunctionCodes::from_u64(record.code)),
                     },
                     StreamEntry::SubBlock(sub_block) => {
                         match BlockID::from_u64(sub_block.block_id) {
-                            BlockID::CONSTANTS => self.parse_constants(result)?,
+                            BlockID::CONSTANTS => {
+                                self.parse_constants(result)?;
+                                next_value_no = result.value_list.len();
+                            }
                             BlockID::METADATA => self.parse_metadata_block(result)?,
+                            BlockID::METADATA_ATTACHMENT => {
+                                self.parse_metadata_attachment(result)?;
+                            }
                             _ => todo!("{:?}", BlockID::from_u64(sub_block.block_id)),
                         }
                     }
                     _ => todo!(),
                 },
-                None => return Ok(()),
+                None => break,
             }
-
             content = self.bitstream.next();
         }
+
+        result.current_function_local_id += 1;
+
+        result.function_bodies.push(AIRFunctionBody { contents });
+
+        Ok(())
     }
 
     pub fn parse_module_sub_block(
@@ -657,6 +949,7 @@ impl Parser {
             BlockID::OPERAND_BUNDLE_TAGS => self.parse_operand_bundle_tags(result)?,
             BlockID::SYNC_SCOPE_NAMES => self.parse_sync_scope_names(result)?,
             BlockID::FUNCTION => self.parse_function_body(result, sub_block)?,
+            BlockID::VALUE_SYMTAB => self.parse_value_symtab(result)?,
             _ => todo!("{:?}", BlockID::from_u64(sub_block.block_id)),
         }
 
@@ -726,10 +1019,13 @@ impl Parser {
         }
     }
 
-    pub fn next(&mut self) -> Result<Option<AIRItem>> {
+    pub fn next(&mut self, current_module: &mut Option<AIRModule>) -> Result<Option<AIRItem>> {
         match self.bitstream.next() {
             Some(entry) => match entry? {
-                StreamEntry::SubBlock(b) => Ok(Some(self.parse_block(b)?)),
+                StreamEntry::SubBlock(b) => {
+                    let block = self.parse_block(b, current_module)?;
+                    Ok(Some(block))
+                }
                 _ => todo!(),
             },
             None => Ok(None),
@@ -738,16 +1034,26 @@ impl Parser {
 
     pub fn start(&mut self) -> Result<AIRFile> {
         let mut items: Vec<AIRItem> = vec![];
-        let mut content = self.next()?;
+        let mut current_module: Option<AIRModule> = None;
+        let mut content = self.next(&mut current_module)?;
 
         loop {
             match &content {
-                Some(content) => items.push(content.clone()),
+                Some(content) => match &content {
+                    AIRItem::Module(module) => {
+                        current_module = Some(module.clone());
+                    }
+                    _ => {
+                        items.push(content.clone());
+                    }
+                },
                 None => break,
             }
 
-            content = self.next()?;
+            content = self.next(&mut current_module)?;
         }
+
+        items.push(AIRItem::Module(current_module.unwrap()));
 
         Ok(AIRFile { items })
     }

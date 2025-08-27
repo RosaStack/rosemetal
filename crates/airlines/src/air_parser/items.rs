@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
 
-use crate::llvm_bitcode::{AttributeKindCode, Fields};
+use crate::llvm_bitcode::{AttributeKindCode, CastOpCode, Fields, GEPNoWrapFlags};
 
 #[derive(Debug, Default)]
 pub struct AIRFile {
@@ -13,6 +13,23 @@ pub struct AIRFile {
 pub enum AIRItem {
     IdentificationBlock(AIRIdentificationBlock),
     Module(AIRModule),
+    SymTabBlock(AIRSymTabBlock),
+    StringTable(AIRStringTable),
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AIRStringTable {
+    pub strings: Vec<String>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AIRSymTabBlock {
+    pub blobs: Vec<AIRBlob>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AIRBlob {
+    pub content: Vec<u8>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -261,6 +278,7 @@ impl CallingConventionCode {
 
 #[derive(Debug, Default, Clone)]
 pub struct AIRFunctionSignature {
+    pub global_id: AIRFunctionSignatureId,
     pub name: TableStringId,
     pub ty: AIRFunctionType,
     pub calling_convention: CallingConventionCode,
@@ -310,23 +328,88 @@ pub enum AIRValue {
     GlobalVariable(AIRGlobalVariableId),
     Constant(AIRConstantId),
     Function(AIRFunctionSignatureId),
+    Argument(AIRLocal),
+    Cast(AIRCast),
+    GetElementPtr(AIRGetElementPtr),
+    Load(AIRLoad),
+    ShuffleVec(AIRShuffleVec),
+    InsertVal(AIRInsertVal),
+    Return(AIRReturn),
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone)]
+pub struct AIRReturn {
+    pub value: AIRValueId,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AIRInsertVal {
+    pub value1: AIRValueId,
+    pub value2: AIRValueId,
+    pub insert_value_idx: u64,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AIRShuffleVec {
+    pub vec1: AIRValueId,
+    pub vec2: AIRValueId,
+    pub mask: AIRValueId,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AIRLoad {
+    pub op: AIRValueId,
+    pub ty: AIRType,
+    pub alignment: u64,
+    pub vol: u64,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AIRGetElementPtr {
+    pub no_wrap_flags: GEPNoWrapFlags,
+    pub ty: AIRType,
+    pub base_ptr_value: AIRValueId,
+    pub indices: Vec<AIRValueId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AIRCast {
+    pub value: AIRValueId,
+    pub cast_to_type: AIRType,
+    pub cast_code: CastOpCode,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AIRFunctionBody {
+    pub contents: Vec<AIRValueId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct AIRLocal {
+    pub id: u64,
+    pub ty: AIRType,
+    pub value: Option<AIRConstantValue>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TableStringId(pub u64);
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AIRGlobalVariableId(pub u64);
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AIRConstantId(pub u64);
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AIRFunctionSignatureId(pub u64);
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AIRValueId(pub u64);
 
 #[derive(Debug, Default, Clone)]
 pub struct AIRModule {
     pub version: u64,
+    pub use_relative_ids: bool,
     pub triple: String,
     pub data_layout: String,
     pub source_filename: String,
@@ -335,7 +418,9 @@ pub struct AIRModule {
     pub entry_table: HashMap<u64, AIRAttrEntry>,
     pub string_table: Vec<TableString>,
     pub global_variables: HashMap<AIRGlobalVariableId, AIRGlobalVariable>,
-    pub function_signatures: HashMap<AIRFunctionSignatureId, AIRFunctionSignature>,
+    pub function_signatures: Vec<AIRFunctionSignature>,
+    pub function_bodies: Vec<AIRFunctionBody>,
+    pub current_function_local_id: u64,
     pub constants: HashMap<AIRConstantId, AIRConstant>,
     pub max_constants_id: u64,
     pub value_list: Vec<AIRValue>,
@@ -349,6 +434,18 @@ pub struct AIRModule {
 }
 
 impl AIRModule {
+    pub fn assign_value_to_value_list(&mut self, id: usize, value: AIRValue) {
+        match self.value_list.get_mut(id) {
+            Some(s) => *s = value,
+            None => {
+                let difference = id - self.value_list.len();
+                self.value_list
+                    .resize(self.value_list.len() + difference + 1, AIRValue::Empty);
+                self.value_list[id] = value;
+            }
+        }
+    }
+
     pub fn parse_global_variable(&mut self, fields: Fields) {
         let string_offset = fields[0];
         let string_size = fields[1];
@@ -463,27 +560,30 @@ impl AIRModule {
 
         let preemption_specifier = PreemptionSpecifierCode::from_u64(fields[16]);
 
-        self.function_signatures.insert(
-            AIRFunctionSignatureId(self.max_global_id),
-            AIRFunctionSignature {
-                name,
-                ty,
-                calling_convention,
-                is_proto,
-                linkage,
-                attr_entry,
-                alignment,
-                section_index,
-                visibility,
-                gc_index,
-                unnamed_addr,
-                prologue_data_index,
-                comdat,
-                prefix_data_index,
-                personality_fn_index,
-                preemption_specifier,
-            },
-        );
+        self.value_list
+            .push(AIRValue::Function(AIRFunctionSignatureId(
+                self.max_global_id,
+            )));
+
+        self.function_signatures.push(AIRFunctionSignature {
+            global_id: AIRFunctionSignatureId(self.max_global_id),
+            name,
+            ty,
+            calling_convention,
+            is_proto,
+            linkage,
+            attr_entry,
+            alignment,
+            section_index,
+            visibility,
+            gc_index,
+            unnamed_addr,
+            prologue_data_index,
+            comdat,
+            prefix_data_index,
+            personality_fn_index,
+            preemption_specifier,
+        });
 
         self.max_global_id += 1;
 

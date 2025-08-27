@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use bitflags::bitflags;
 
 pub const FIRST_APPLICATION_ABBREV_ID: u64 = 4;
 pub const FIRST_APPLICATION_BLOCKID: u64 = 8;
@@ -897,5 +898,83 @@ impl FunctionCodes {
             65 => Self::DEBUG_RECORD_LABEL,
             _ => unimplemented!(),
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[repr(u64)]
+#[allow(non_camel_case_types)]
+pub enum CastOpCode {
+    #[default]
+    TRUNC = 0,
+    ZEXT = 1,
+    SEXT = 2,
+    FPTOUI = 3,
+    FPTOSI = 4,
+    UITOFP = 5,
+    SITOFP = 6,
+    FPTRUNC = 7,
+    FPEXT = 8,
+    PTRTOINT = 9,
+    INTTOPTR = 10,
+    BITCAST = 11,
+    ADDRSPACECAST = 12,
+}
+
+impl CastOpCode {
+    pub fn from_u64(v: u64) -> Self {
+        match v {
+            0 => Self::TRUNC,
+            1 => Self::ZEXT,
+            2 => Self::SEXT,
+            3 => Self::FPTOUI,
+            4 => Self::FPTOSI,
+            5 => Self::UITOFP,
+            6 => Self::SITOFP,
+            7 => Self::FPTRUNC,
+            8 => Self::FPEXT,
+            9 => Self::PTRTOINT,
+            10 => Self::INTTOPTR,
+            11 => Self::BITCAST,
+            12 => Self::ADDRSPACECAST,
+            _ => unimplemented!(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[repr(u64)]
+#[allow(non_camel_case_types)]
+pub enum GetElementPtrOptionalFlags {
+    #[default]
+    INBOUNDS = 0,
+    NUSW = 1,
+    NUW = 2,
+}
+
+bitflags! {
+    #[derive(Debug, Default, Clone)]
+    pub struct GEPNoWrapFlags: u64 {
+        const InBoundsFlag = (1 << 0);
+        const NUSWFlag = (1 << 1);
+        const NUWFlag = (1 << 2);
+    }
+}
+
+impl GEPNoWrapFlags {
+    pub fn from_u64(v: u64) -> Self {
+        let mut nw = Self::default();
+
+        if v & (1 << GetElementPtrOptionalFlags::INBOUNDS as u64) != 0 {
+            nw |= Self::InBoundsFlag;
+        }
+        if v & (1 << GetElementPtrOptionalFlags::NUSW as u64) != 0 {
+            nw |= Self::NUSWFlag;
+        }
+        if v & (1 << GetElementPtrOptionalFlags::NUW as u64) != 0 {
+            nw |= Self::NUWFlag;
+        }
+
+        nw
     }
 }

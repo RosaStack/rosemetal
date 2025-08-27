@@ -8,3 +8,4 @@ debug = []
 
 [dependencies]
 anyhow = { workspace = true }
+bitflags = "2.9.3"
