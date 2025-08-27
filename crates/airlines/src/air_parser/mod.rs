@@ -13,8 +13,8 @@ use crate::llvm_bitcode::{
 };
 
 pub struct Parser {
-    signature: Option<Signature>,
-    bitstream: Bitstream,
+    pub signature: Option<Signature>,
+    pub bitstream: Bitstream,
 }
 
 impl Parser {

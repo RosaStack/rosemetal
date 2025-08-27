@@ -5,11 +5,11 @@ use super::{BitCursor, StreamEntry, StreamParser, debug};
 
 #[derive(Debug)]
 pub struct Signature {
-    magic: u32,
-    version: u32,
-    offset: u32,
-    size: u32,
-    cpu_type: u32,
+    pub magic: u32,
+    pub version: u32,
+    pub offset: u32,
+    pub size: u32,
+    pub cpu_type: u32,
 }
 
 pub const BITCODE_WRAPPER_MAGIC: u32 = 0x0b17c0de;
