@@ -12,7 +12,7 @@ mod tests {
     fn parser() -> Result<()> {
         let mut parser = Parser::new(std::fs::read("test-files/test.air")?)?;
 
-        parser.start()?;
+        dbg!(parser.start()?);
 
         Ok(())
     }

@@ -784,6 +784,7 @@ impl Parser {
         }
 
         let mut next_value_no = result.value_list.len();
+        let mut function_body_id = 0;
 
         loop {
             match content {
@@ -797,10 +798,11 @@ impl Parser {
                                 return Err(anyhow!("Invalid Declare Block value."));
                             }
 
-                            result.function_bodies.resize(
-                                result.function_bodies.len() + record.fields[0] as usize,
-                                AIRFunctionBody::default(),
-                            );
+                            function_body_id =
+                                result.function_bodies.len() + record.fields[0] as usize;
+                            result
+                                .function_bodies
+                                .resize(function_body_id, AIRFunctionBody::default());
                         }
                         FunctionCodes::INST_CAST => {
                             let value = self.get_value(result, record.fields[0], next_value_no);
@@ -929,7 +931,7 @@ impl Parser {
 
         result.current_function_local_id += 1;
 
-        result.function_bodies.push(AIRFunctionBody { contents });
+        result.function_bodies[function_body_id - 1] = AIRFunctionBody { contents };
 
         Ok(())
     }
