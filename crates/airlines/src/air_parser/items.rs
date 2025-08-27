@@ -5,30 +5,30 @@ use anyhow::{Result, anyhow};
 use crate::llvm_bitcode::{AttributeKindCode, CastOpCode, Fields, GEPNoWrapFlags};
 
 #[derive(Debug, Default)]
-pub struct AIRFile {
-    pub items: Vec<AIRItem>,
+pub struct AirFile {
+    pub items: Vec<AirItem>,
 }
 
 #[derive(Debug, Clone)]
-pub enum AIRItem {
-    IdentificationBlock(AIRIdentificationBlock),
-    Module(AIRModule),
-    SymTabBlock(AIRSymTabBlock),
-    StringTable(AIRStringTable),
+pub enum AirItem {
+    IdentificationBlock(AirIdentificationBlock),
+    Module(AirModule),
+    SymTabBlock(AirSymTabBlock),
+    StringTable(AirStringTable),
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRStringTable {
+pub struct AirStringTable {
     pub strings: Vec<String>,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRSymTabBlock {
-    pub blobs: Vec<AIRBlob>,
+pub struct AirSymTabBlock {
+    pub blobs: Vec<AirBlob>,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRBlob {
+pub struct AirBlob {
     pub content: Vec<u8>,
 }
 
@@ -40,11 +40,11 @@ pub struct TableString {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRGlobalVariable {
+pub struct AirGlobalVariable {
     pub name: TableStringId,
-    pub ty: AIRType,
+    pub ty: AirType,
     pub is_const: bool,
-    pub initializer: AIRConstantId,
+    pub initializer: AirConstantId,
     pub linkage: LinkageCode,
     pub alignment: u64,
     pub section_index: u64,
@@ -58,13 +58,13 @@ pub struct AIRGlobalVariable {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRConstant {
-    pub ty: AIRType,
-    pub value: AIRConstantValue,
+pub struct AirConstant {
+    pub ty: AirType,
+    pub value: AirConstantValue,
 }
 
 #[derive(Debug, Default, Clone)]
-pub enum AIRConstantValue {
+pub enum AirConstantValue {
     #[default]
     Null,
     Undefined,
@@ -72,8 +72,8 @@ pub enum AIRConstantValue {
     Unresolved(u64),
     Integer(u64),
     Float32(f32),
-    Aggregate(Vec<AIRConstantId>),
-    Array(Vec<AIRConstantValue>),
+    Aggregate(Vec<AirConstantId>),
+    Array(Vec<AirConstantValue>),
     Pointer(u64),
 }
 
@@ -277,14 +277,14 @@ impl CallingConventionCode {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRFunctionSignature {
-    pub global_id: AIRFunctionSignatureId,
+pub struct AirFunctionSignature {
+    pub global_id: AirFunctionSignatureId,
     pub name: TableStringId,
-    pub ty: AIRFunctionType,
+    pub ty: AirFunctionType,
     pub calling_convention: CallingConventionCode,
     pub is_proto: bool,
     pub linkage: LinkageCode,
-    pub attr_entry: Option<AIRAttrEntry>,
+    pub attr_entry: Option<AirAttrEntry>,
     pub alignment: u64,
     pub section_index: u64,
     pub visibility: VisibilityCode,
@@ -307,140 +307,140 @@ pub enum UndiscoveredData {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRMetadataKind {
+pub struct AirMetadataKind {
     pub id: u64,
     pub name: String,
 }
 
 #[derive(Debug, Default, Clone)]
-pub enum AIRMetadataConstant {
+pub enum AirMetadataConstant {
     #[default]
     None,
-    Value(AIRConstantValue),
+    Value(AirConstantValue),
     Pointer(u64),
     Node(String, Vec<u64>),
 }
 
 #[derive(Debug, Default, Clone)]
-pub enum AIRValue {
+pub enum AirValue {
     #[default]
     Empty,
-    GlobalVariable(AIRGlobalVariableId),
-    Constant(AIRConstantId),
-    Function(AIRFunctionSignatureId),
-    Argument(AIRLocal),
-    Cast(AIRCast),
-    GetElementPtr(AIRGetElementPtr),
-    Load(AIRLoad),
-    ShuffleVec(AIRShuffleVec),
-    InsertVal(AIRInsertVal),
-    Return(AIRReturn),
+    GlobalVariable(AirGlobalVariableId),
+    Constant(AirConstantId),
+    Function(AirFunctionSignatureId),
+    Argument(AirLocal),
+    Cast(AirCast),
+    GetElementPtr(AirGetElementPtr),
+    Load(AirLoad),
+    ShuffleVec(AirShuffleVec),
+    InsertVal(AirInsertVal),
+    Return(AirReturn),
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRReturn {
-    pub value: AIRValueId,
+pub struct AirReturn {
+    pub value: AirValueId,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRInsertVal {
-    pub value1: AIRValueId,
-    pub value2: AIRValueId,
+pub struct AirInsertVal {
+    pub value1: AirValueId,
+    pub value2: AirValueId,
     pub insert_value_idx: u64,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRShuffleVec {
-    pub vec1: AIRValueId,
-    pub vec2: AIRValueId,
-    pub mask: AIRValueId,
+pub struct AirShuffleVec {
+    pub vec1: AirValueId,
+    pub vec2: AirValueId,
+    pub mask: AirValueId,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRLoad {
-    pub op: AIRValueId,
-    pub ty: AIRType,
+pub struct AirLoad {
+    pub op: AirValueId,
+    pub ty: AirType,
     pub alignment: u64,
     pub vol: u64,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRGetElementPtr {
+pub struct AirGetElementPtr {
     pub no_wrap_flags: GEPNoWrapFlags,
-    pub ty: AIRType,
-    pub base_ptr_value: AIRValueId,
-    pub indices: Vec<AIRValueId>,
+    pub ty: AirType,
+    pub base_ptr_value: AirValueId,
+    pub indices: Vec<AirValueId>,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRCast {
-    pub value: AIRValueId,
-    pub cast_to_type: AIRType,
+pub struct AirCast {
+    pub value: AirValueId,
+    pub cast_to_type: AirType,
     pub cast_code: CastOpCode,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRFunctionBody {
-    pub contents: Vec<AIRValueId>,
+pub struct AirFunctionBody {
+    pub contents: Vec<AirValueId>,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRLocal {
+pub struct AirLocal {
     pub id: u64,
-    pub ty: AIRType,
-    pub value: Option<AIRConstantValue>,
+    pub ty: AirType,
+    pub value: Option<AirConstantValue>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TableStringId(pub u64);
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct AIRGlobalVariableId(pub u64);
+pub struct AirGlobalVariableId(pub u64);
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct AIRConstantId(pub u64);
+pub struct AirConstantId(pub u64);
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct AIRFunctionSignatureId(pub u64);
+pub struct AirFunctionSignatureId(pub u64);
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct AIRValueId(pub u64);
+pub struct AirValueId(pub u64);
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRModule {
+pub struct AirModule {
     pub version: u64,
     pub use_relative_ids: bool,
     pub triple: String,
     pub data_layout: String,
     pub source_filename: String,
-    pub types: Vec<AIRType>,
-    pub attributes: HashMap<u64, AIRAttribute>,
-    pub entry_table: HashMap<u64, AIRAttrEntry>,
+    pub types: Vec<AirType>,
+    pub attributes: HashMap<u64, AirAttribute>,
+    pub entry_table: HashMap<u64, AirAttrEntry>,
     pub string_table: Vec<TableString>,
-    pub global_variables: HashMap<AIRGlobalVariableId, AIRGlobalVariable>,
-    pub function_signatures: Vec<AIRFunctionSignature>,
-    pub function_bodies: Vec<AIRFunctionBody>,
+    pub global_variables: HashMap<AirGlobalVariableId, AirGlobalVariable>,
+    pub function_signatures: Vec<AirFunctionSignature>,
+    pub function_bodies: Vec<AirFunctionBody>,
     pub current_function_local_id: u64,
-    pub constants: HashMap<AIRConstantId, AIRConstant>,
+    pub constants: HashMap<AirConstantId, AirConstant>,
     pub max_constants_id: u64,
-    pub value_list: Vec<AIRValue>,
+    pub value_list: Vec<AirValue>,
     pub undiscovered_data: Vec<UndiscoveredData>,
-    pub metadata_kind_table: HashMap<u64, AIRMetadataKind>,
+    pub metadata_kind_table: HashMap<u64, AirMetadataKind>,
     pub metadata_strings: Vec<String>,
-    pub metadata_constants: HashMap<u64, AIRMetadataConstant>,
+    pub metadata_constants: HashMap<u64, AirMetadataConstant>,
     pub operand_bundle_tags: Vec<String>,
     pub sync_scope_names: Vec<String>,
     pub max_global_id: u64,
 }
 
-impl AIRModule {
-    pub fn assign_value_to_value_list(&mut self, id: usize, value: AIRValue) {
+impl AirModule {
+    pub fn assign_value_to_value_list(&mut self, id: usize, value: AirValue) {
         match self.value_list.get_mut(id) {
             Some(s) => *s = value,
             None => {
                 let difference = id - self.value_list.len();
                 self.value_list
-                    .resize(self.value_list.len() + difference + 1, AIRValue::Empty);
+                    .resize(self.value_list.len() + difference + 1, AirValue::Empty);
                 self.value_list[id] = value;
             }
         }
@@ -481,11 +481,11 @@ impl AIRModule {
         let attribute_index = fields[13];
         let preemption_specifier = PreemptionSpecifierCode::from_u64(fields[14]);
 
-        let result = AIRGlobalVariable {
+        let result = AirGlobalVariable {
             name,
             ty: ty.clone(),
             is_const,
-            initializer: AIRConstantId(initializer_id),
+            initializer: AirConstantId(initializer_id),
             linkage,
             alignment,
             section_index,
@@ -499,12 +499,12 @@ impl AIRModule {
         };
 
         self.value_list
-            .push(AIRValue::GlobalVariable(AIRGlobalVariableId(
+            .push(AirValue::GlobalVariable(AirGlobalVariableId(
                 self.max_global_id,
             )));
 
         self.global_variables
-            .insert(AIRGlobalVariableId(self.max_global_id), result);
+            .insert(AirGlobalVariableId(self.max_global_id), result);
 
         self.max_global_id += 1;
     }
@@ -521,7 +521,7 @@ impl AIRModule {
 
         let name = TableStringId(self.string_table.len() as u64 - 1);
         let ty = match self.types[fields[2] as usize].clone() {
-            AIRType::Function(f) => f,
+            AirType::Function(f) => f,
             _ => return Err(anyhow!("Function type not found.")),
         };
         let calling_convention = CallingConventionCode::from_u64(fields[3]);
@@ -561,12 +561,12 @@ impl AIRModule {
         let preemption_specifier = PreemptionSpecifierCode::from_u64(fields[16]);
 
         self.value_list
-            .push(AIRValue::Function(AIRFunctionSignatureId(
+            .push(AirValue::Function(AirFunctionSignatureId(
                 self.max_global_id,
             )));
 
-        self.function_signatures.push(AIRFunctionSignature {
-            global_id: AIRFunctionSignatureId(self.max_global_id),
+        self.function_signatures.push(AirFunctionSignature {
+            global_id: AirFunctionSignatureId(self.max_global_id),
             name,
             ty,
             calling_convention,
@@ -592,65 +592,65 @@ impl AIRModule {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRAttrEntry {
-    pub groups: Vec<AIRAttribute>,
+pub struct AirAttrEntry {
+    pub groups: Vec<AirAttribute>,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRAttribute {
+pub struct AirAttribute {
     pub id: u64,
     pub paramidx: u64,
-    pub properties: Vec<AIRAttrProperties>,
+    pub properties: Vec<AirAttrProperties>,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRArrayType {
+pub struct AirArrayType {
     pub size: u64,
-    pub element_type: Box<AIRType>,
+    pub element_type: Box<AirType>,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRVectorType {
+pub struct AirVectorType {
     pub size: u64,
-    pub element_type: Box<AIRType>,
+    pub element_type: Box<AirType>,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRStructType {
+pub struct AirStructType {
     pub name: String,
     pub is_packed: bool,
-    pub elements: Vec<AIRType>,
+    pub elements: Vec<AirType>,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRFunctionType {
+pub struct AirFunctionType {
     pub vararg: u64,
-    pub return_type: Box<AIRType>,
-    pub params: Vec<AIRType>,
+    pub return_type: Box<AirType>,
+    pub params: Vec<AirType>,
 }
 
 #[derive(Debug, Default, Clone)]
-pub enum AIRType {
+pub enum AirType {
     #[default]
     Void,
     Float,
     Integer(u64),
-    Pointer(u64, Box<AIRType>),
-    Array(AIRArrayType),
-    Vector(AIRVectorType),
-    Struct(AIRStructType),
-    Function(AIRFunctionType),
+    Pointer(u64, Box<AirType>),
+    Array(AirArrayType),
+    Vector(AirVectorType),
+    Struct(AirStructType),
+    Function(AirFunctionType),
     Metadata,
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct AIRIdentificationBlock {
+pub struct AirIdentificationBlock {
     pub string: String,
     pub epoch: Vec<u64>,
 }
 
 #[derive(Debug, Clone)]
-pub enum AIRAttrProperties {
+pub enum AirAttrProperties {
     WellKnown(AttributeKindCode),
     WithIntValue(AttributeKindCode, u64),
     StringAttribute(String),
