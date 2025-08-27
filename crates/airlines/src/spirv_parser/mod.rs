@@ -212,8 +212,102 @@ impl Parser {
             0 => SpirVAddressingModel::Logical,
             1 => SpirVAddressingModel::Physical32,
             2 => SpirVAddressingModel::Physical64,
-            3 => SpirVAddressingModel::PhysicalStorageBuffer64,
+            5348 => SpirVAddressingModel::PhysicalStorageBuffer64,
             _ => return Err(anyhow!("Invalid Addressing Model.")),
+        })
+    }
+
+    pub fn execution_model_check(
+        &self,
+        model: SpirVExecutionModel,
+        capability: SpirVCapability,
+    ) -> Result<SpirVExecutionModel> {
+        let mut it_has_capability = false;
+        for i in &self.capabilities {
+            if *i == capability {
+                it_has_capability = true;
+            }
+        }
+
+        if !it_has_capability {
+            return Err(anyhow!(
+                "'{:?}' requires the feature '{:?}' to be used, which is not enabled in the SPIR-V file.",
+                model,
+                capability
+            ));
+        }
+
+        Ok(model)
+    }
+
+    pub fn parse_execution_model(&mut self) -> Result<SpirVExecutionModel> {
+        let instruction = u32::from_le_bytes([
+            self.advance()?,
+            self.advance()?,
+            self.advance()?,
+            self.advance()?,
+        ]);
+
+        Ok(match instruction {
+            0 => {
+                self.execution_model_check(SpirVExecutionModel::Vertex, SpirVCapability::Shader)?
+            }
+            1 => self.execution_model_check(
+                SpirVExecutionModel::TessellationControl,
+                SpirVCapability::Tessellation,
+            )?,
+            2 => self.execution_model_check(
+                SpirVExecutionModel::TessellationEvaluation,
+                SpirVCapability::Tessellation,
+            )?,
+            3 => self
+                .execution_model_check(SpirVExecutionModel::Geometry, SpirVCapability::Geometry)?,
+            4 => {
+                self.execution_model_check(SpirVExecutionModel::Fragment, SpirVCapability::Shader)?
+            }
+            5 => {
+                self.execution_model_check(SpirVExecutionModel::GLCompute, SpirVCapability::Shader)?
+            }
+            6 => {
+                self.execution_model_check(SpirVExecutionModel::Kernel, SpirVCapability::Kernel)?
+            }
+            5267 => self.execution_model_check(
+                SpirVExecutionModel::TaskNV,
+                SpirVCapability::MeshShadingNV,
+            )?,
+            5268 => self.execution_model_check(
+                SpirVExecutionModel::MeshNV,
+                SpirVCapability::MeshShadingNV,
+            )?,
+            5313 => self.execution_model_check(
+                SpirVExecutionModel::RayGenerationKHR,
+                SpirVCapability::RayTracingKHR,
+            )?,
+            5314 => self.execution_model_check(
+                SpirVExecutionModel::IntersectionKHR,
+                SpirVCapability::RayTracingKHR,
+            )?,
+            5315 => self.execution_model_check(
+                SpirVExecutionModel::AnyHitKHR,
+                SpirVCapability::RayTracingKHR,
+            )?,
+            5316 => self.execution_model_check(
+                SpirVExecutionModel::MissKHR,
+                SpirVCapability::RayTracingKHR,
+            )?,
+            5317 => self.execution_model_check(
+                SpirVExecutionModel::CallableKHR,
+                SpirVCapability::RayTracingKHR,
+            )?,
+            5364 => self.execution_model_check(
+                SpirVExecutionModel::TaskEXT,
+                SpirVCapability::MeshShadingEXT,
+            )?,
+            5365 => self.execution_model_check(
+                SpirVExecutionModel::MeshEXT,
+                SpirVCapability::MeshShadingEXT,
+            )?,
+            _ => return Err(anyhow!("Invalid Execution Model ID.")),
         })
     }
 
@@ -238,6 +332,17 @@ impl Parser {
                 let addressing_model = self.parse_addressing_model()?;
                 let memory_model = self.parse_memory_model()?;
                 SpirVValue::MemoryModel(addressing_model, memory_model)
+            }
+            (8, 15) => {
+                let execution_model = self.parse_execution_model()?;
+                let entry_point_id = u32::from_le_bytes([
+                    self.advance()?,
+                    self.advance()?,
+                    self.advance()?,
+                    self.advance()?,
+                ]);
+                let name = self.parse_literal()?;
+                todo!("{:?}", (execution_model, entry_point_id, name))
             }
             _ => todo!("{:?}", (op_code, word_count)),
         };

@@ -40,6 +40,28 @@ pub enum SpirVMemoryModel {
     Vulkan,
 }
 
+#[derive(Debug, Default, Clone)]
+pub enum SpirVExecutionModel {
+    #[default]
+    Vertex,
+    TessellationControl,
+    TessellationEvaluation,
+    Geometry,
+    Fragment,
+    GLCompute,
+    Kernel,
+    TaskNV,
+    MeshNV,
+    RayGenerationKHR,
+    IntersectionKHR,
+    AnyHitKHR,
+    ClosestHitKHR,
+    MissKHR,
+    CallableKHR,
+    TaskEXT,
+    MeshEXT,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub enum SpirVCapability {
     #[default]

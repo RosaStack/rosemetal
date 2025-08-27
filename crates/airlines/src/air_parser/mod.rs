@@ -627,7 +627,7 @@ impl Parser {
         }
     }
 
-    pub fn parse_metadata_attachment(&mut self, result: &mut AirModule) -> Result<()> {
+    pub fn parse_metadata_attachment(&mut self, _result: &mut AirModule) -> Result<()> {
         let mut content = self.bitstream.next();
 
         loop {
@@ -766,7 +766,7 @@ impl Parser {
         }
     }
 
-    pub fn parse_function_body(&mut self, result: &mut AirModule, block: Block) -> Result<()> {
+    pub fn parse_function_body(&mut self, result: &mut AirModule, _block: Block) -> Result<()> {
         let mut content = self.bitstream.next();
 
         let id = result.current_function_local_id as usize;
@@ -922,7 +922,6 @@ impl Parser {
                             _ => todo!("{:?}", BlockID::from_u64(sub_block.block_id)),
                         }
                     }
-                    _ => todo!(),
                 },
                 None => break,
             }
