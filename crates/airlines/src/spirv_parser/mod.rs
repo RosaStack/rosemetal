@@ -8,7 +8,7 @@ pub use items::*;
 pub struct Parser {
     position: i64,
     signature: SpirVSignature,
-    content: Vec<u8>,
+    content: Vec<u32>,
     operands: Vec<SpirVOp>,
     capabilities: Vec<SpirVCapability>,
 }
@@ -18,16 +18,29 @@ impl Parser {
         Self {
             position: -1,
             signature: SpirVSignature::default(),
-            content,
+            content: {
+                let mut result: Vec<u32> = vec![0; content.len() / 4];
+                let mut count = 0;
+                for i in &mut result {
+                    *i = u32::from_le_bytes([
+                        content[count * 4 + 0],
+                        content[count * 4 + 1],
+                        content[count * 4 + 2],
+                        content[count * 4 + 3],
+                    ]);
+                    count += 1;
+                }
+                result
+            },
             operands: vec![],
             capabilities: vec![],
         }
     }
 
-    pub fn advance(&mut self) -> Result<u8> {
+    pub fn advance(&mut self) -> Result<u32> {
         self.position += 1;
 
-        if self.position as usize > self.content.len() {
+        if self.position as usize >= self.content.len() {
             return Err(anyhow!("Position is bigger than the contents length."));
         }
 
@@ -35,47 +48,22 @@ impl Parser {
     }
 
     pub fn get_signature(&mut self) -> Result<SpirVSignature> {
-        let magic_number = u32::from_le_bytes([
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-        ]);
+        let magic_number = self.advance()?;
 
         if magic_number != 0x7230203 {
             return Err(anyhow!("Invalid or corrupted magic number."));
         }
 
-        let version_hex = u32::from_be_bytes([
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-        ]);
+        let version_hex = self.advance()?;
 
         let version = (version_hex.to_le_bytes()[1], version_hex.to_le_bytes()[2]);
 
         // TODO: Find a way to parse the tool that generated this.
-        let generator_magic_number = u32::from_le_bytes([
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-        ]);
+        let generator_magic_number = self.advance()?;
 
-        let bound = u32::from_le_bytes([
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-        ]);
+        let bound = self.advance()?;
 
-        let reserved_instruction_schema = u32::from_le_bytes([
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-        ]);
+        let reserved_instruction_schema = self.advance()?;
 
         Ok(SpirVSignature {
             magic_number,
@@ -87,12 +75,7 @@ impl Parser {
     }
 
     pub fn parse_op_capability(&mut self) -> Result<SpirVCapability> {
-        let instruction = u32::from_le_bytes([
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-        ]);
+        let instruction = self.advance()?;
 
         Ok(match instruction {
             0 => SpirVCapability::Matrix,
@@ -156,40 +139,28 @@ impl Parser {
         })
     }
 
-    pub fn parse_literal(&mut self) -> Result<String> {
-        let mut byte_count = 0;
+    pub fn parse_literal(&mut self) -> Result<(u64, String)> {
+        let mut words = 0;
         let mut result = String::new();
 
-        loop {
-            if byte_count == 4 {
-                byte_count = 0;
-            }
+        'main_loop: loop {
+            words += 1;
+            let characters = self.advance()?.to_le_bytes();
 
-            let character = self.advance()? as char;
-
-            if character == '\0' {
-                while byte_count < 3 {
-                    self.advance()?;
-                    byte_count += 1;
+            for i in characters {
+                if i == 0 {
+                    break 'main_loop;
                 }
 
-                break;
+                result.push(i as char);
             }
-
-            result.push(character);
-            byte_count += 1;
         }
 
-        Ok(result)
+        Ok((words, result))
     }
 
     pub fn parse_memory_model(&mut self) -> Result<SpirVMemoryModel> {
-        let instruction = u32::from_le_bytes([
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-        ]);
+        let instruction = self.advance()?;
 
         Ok(match instruction {
             0 => SpirVMemoryModel::Simple,
@@ -201,12 +172,7 @@ impl Parser {
     }
 
     pub fn parse_addressing_model(&mut self) -> Result<SpirVAddressingModel> {
-        let instruction = u32::from_le_bytes([
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-        ]);
+        let instruction = self.advance()?;
 
         Ok(match instruction {
             0 => SpirVAddressingModel::Logical,
@@ -241,12 +207,7 @@ impl Parser {
     }
 
     pub fn parse_execution_model(&mut self) -> Result<SpirVExecutionModel> {
-        let instruction = u32::from_le_bytes([
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-            self.advance()?,
-        ]);
+        let instruction = self.advance()?;
 
         Ok(match instruction {
             0 => {
@@ -312,37 +273,44 @@ impl Parser {
     }
 
     pub fn parse_op(&mut self) -> Result<SpirVOp> {
-        let word_count = u16::from_le_bytes([self.advance()?, self.advance()?]);
-        let op_code = u16::from_le_bytes([self.advance()?, self.advance()?]);
+        let first_word = self.advance()?.to_le_bytes();
+        let op_code = u16::from_le_bytes([first_word[0], first_word[1]]);
+        let word_count = u16::from_le_bytes([first_word[2], first_word[3]]);
 
         let mut result = SpirVOp::default();
 
-        result.value = match (op_code, word_count) {
-            (2, 17) => SpirVValue::Capability(self.parse_op_capability()?),
-            (6, 11) => {
-                result.id = u32::from_le_bytes([
-                    self.advance()?,
-                    self.advance()?,
-                    self.advance()?,
-                    self.advance()?,
-                ]);
-                SpirVValue::ExtendedInstructionImport(self.parse_literal()?)
+        result.value = match op_code {
+            17 => SpirVValue::Capability(self.parse_op_capability()?),
+            11 => {
+                result.id = self.advance()?;
+                SpirVValue::ExtendedInstructionImport(self.parse_literal()?.1)
             }
-            (3, 14) => {
+            14 => {
                 let addressing_model = self.parse_addressing_model()?;
                 let memory_model = self.parse_memory_model()?;
                 SpirVValue::MemoryModel(addressing_model, memory_model)
             }
-            (8, 15) => {
+            15 => {
                 let execution_model = self.parse_execution_model()?;
-                let entry_point_id = u32::from_le_bytes([
-                    self.advance()?,
-                    self.advance()?,
-                    self.advance()?,
-                    self.advance()?,
-                ]);
+                let entry_point_id = SpirVVariableId(self.advance()?);
+
+                // word_count - first_word - execution_model - entry_point_id
+                let mut words_left = word_count - 3;
+
                 let name = self.parse_literal()?;
-                todo!("{:?}", (execution_model, entry_point_id, name))
+                words_left -= name.0 as u16;
+
+                let mut arguments = vec![];
+                for _i in 0..words_left {
+                    arguments.push(SpirVVariableId(self.advance()?));
+                }
+
+                dbg!(SpirVValue::EntryPoint(SpirVEntryPoint {
+                    name: name.1,
+                    execution_model,
+                    entry_point_id,
+                    arguments,
+                }))
             }
             _ => todo!("{:?}", (op_code, word_count)),
         };

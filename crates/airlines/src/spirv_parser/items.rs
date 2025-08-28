@@ -20,7 +20,19 @@ pub enum SpirVValue {
     Capability(SpirVCapability),
     ExtendedInstructionImport(String),
     MemoryModel(SpirVAddressingModel, SpirVMemoryModel),
+    EntryPoint(SpirVEntryPoint),
 }
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVEntryPoint {
+    pub name: String,
+    pub execution_model: SpirVExecutionModel,
+    pub entry_point_id: SpirVVariableId,
+    pub arguments: Vec<SpirVVariableId>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SpirVVariableId(pub u32);
 
 #[derive(Debug, Default, Clone)]
 pub enum SpirVAddressingModel {
