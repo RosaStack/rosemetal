@@ -1,6 +1,6 @@
 pub mod items;
 
-use std::u32;
+use std::{collections::HashMap, u32};
 
 use anyhow::{Result, anyhow};
 pub use items::*;
@@ -10,6 +10,8 @@ pub struct Parser {
     signature: SpirVSignature,
     content: Vec<u32>,
     operands: Vec<SpirVOp>,
+    name_table: HashMap<SpirVVariableId, SpirVName>,
+    decorate_table: HashMap<SpirVVariableId, SpirVDecorate>,
     capabilities: Vec<SpirVCapability>,
 }
 
@@ -34,6 +36,8 @@ impl Parser {
             },
             operands: vec![],
             capabilities: vec![],
+            name_table: HashMap::new(),
+            decorate_table: HashMap::new(),
         }
     }
 
@@ -183,92 +187,96 @@ impl Parser {
         })
     }
 
-    pub fn execution_model_check(
-        &self,
-        model: SpirVExecutionModel,
-        capability: SpirVCapability,
-    ) -> Result<SpirVExecutionModel> {
-        let mut it_has_capability = false;
-        for i in &self.capabilities {
-            if *i == capability {
-                it_has_capability = true;
-            }
-        }
-
-        if !it_has_capability {
-            return Err(anyhow!(
-                "'{:?}' requires the feature '{:?}' to be used, which is not enabled in the SPIR-V file.",
-                model,
-                capability
-            ));
-        }
-
-        Ok(model)
-    }
-
     pub fn parse_execution_model(&mut self) -> Result<SpirVExecutionModel> {
         let instruction = self.advance()?;
 
         Ok(match instruction {
             0 => {
-                self.execution_model_check(SpirVExecutionModel::Vertex, SpirVCapability::Shader)?
+                Self::add_capability_to(SpirVCapability::Shader, &mut self.capabilities)?;
+                SpirVExecutionModel::Vertex
             }
-            1 => self.execution_model_check(
-                SpirVExecutionModel::TessellationControl,
-                SpirVCapability::Tessellation,
-            )?,
-            2 => self.execution_model_check(
-                SpirVExecutionModel::TessellationEvaluation,
-                SpirVCapability::Tessellation,
-            )?,
-            3 => self
-                .execution_model_check(SpirVExecutionModel::Geometry, SpirVCapability::Geometry)?,
+            1 => {
+                Self::add_capability_to(SpirVCapability::Tessellation, &mut self.capabilities)?;
+                SpirVExecutionModel::TessellationControl
+            }
+            2 => {
+                Self::add_capability_to(SpirVCapability::Tessellation, &mut self.capabilities)?;
+                SpirVExecutionModel::TessellationEvaluation
+            }
+            3 => {
+                Self::add_capability_to(SpirVCapability::Geometry, &mut self.capabilities)?;
+                SpirVExecutionModel::Geometry
+            }
             4 => {
-                self.execution_model_check(SpirVExecutionModel::Fragment, SpirVCapability::Shader)?
+                Self::add_capability_to(SpirVCapability::Shader, &mut self.capabilities)?;
+                SpirVExecutionModel::Fragment
             }
             5 => {
-                self.execution_model_check(SpirVExecutionModel::GLCompute, SpirVCapability::Shader)?
+                Self::add_capability_to(SpirVCapability::Shader, &mut self.capabilities)?;
+                SpirVExecutionModel::GLCompute
             }
             6 => {
-                self.execution_model_check(SpirVExecutionModel::Kernel, SpirVCapability::Kernel)?
+                Self::add_capability_to(SpirVCapability::Kernel, &mut self.capabilities)?;
+                SpirVExecutionModel::Kernel
             }
-            5267 => self.execution_model_check(
-                SpirVExecutionModel::TaskNV,
-                SpirVCapability::MeshShadingNV,
-            )?,
-            5268 => self.execution_model_check(
-                SpirVExecutionModel::MeshNV,
-                SpirVCapability::MeshShadingNV,
-            )?,
-            5313 => self.execution_model_check(
-                SpirVExecutionModel::RayGenerationKHR,
-                SpirVCapability::RayTracingKHR,
-            )?,
-            5314 => self.execution_model_check(
-                SpirVExecutionModel::IntersectionKHR,
-                SpirVCapability::RayTracingKHR,
-            )?,
-            5315 => self.execution_model_check(
-                SpirVExecutionModel::AnyHitKHR,
-                SpirVCapability::RayTracingKHR,
-            )?,
-            5316 => self.execution_model_check(
-                SpirVExecutionModel::MissKHR,
-                SpirVCapability::RayTracingKHR,
-            )?,
-            5317 => self.execution_model_check(
-                SpirVExecutionModel::CallableKHR,
-                SpirVCapability::RayTracingKHR,
-            )?,
-            5364 => self.execution_model_check(
-                SpirVExecutionModel::TaskEXT,
-                SpirVCapability::MeshShadingEXT,
-            )?,
-            5365 => self.execution_model_check(
-                SpirVExecutionModel::MeshEXT,
-                SpirVCapability::MeshShadingEXT,
-            )?,
+            5267 => {
+                Self::add_capability_to(SpirVCapability::MeshShadingNV, &mut self.capabilities)?;
+                SpirVExecutionModel::TaskNV
+            }
+            5268 => {
+                Self::add_capability_to(SpirVCapability::MeshShadingNV, &mut self.capabilities)?;
+                SpirVExecutionModel::MeshNV
+            }
+            5313 => {
+                Self::add_capability_to(SpirVCapability::RayTracingKHR, &mut self.capabilities)?;
+                SpirVExecutionModel::RayGenerationKHR
+            }
+            5314 => {
+                Self::add_capability_to(SpirVCapability::RayTracingKHR, &mut self.capabilities)?;
+                SpirVExecutionModel::IntersectionKHR
+            }
+            5315 => {
+                Self::add_capability_to(SpirVCapability::RayTracingKHR, &mut self.capabilities)?;
+                SpirVExecutionModel::AnyHitKHR
+            }
+            5316 => {
+                Self::add_capability_to(SpirVCapability::RayTracingKHR, &mut self.capabilities)?;
+                SpirVExecutionModel::MissKHR
+            }
+            5317 => {
+                Self::add_capability_to(SpirVCapability::RayTracingKHR, &mut self.capabilities)?;
+                SpirVExecutionModel::CallableKHR
+            }
+            5364 => {
+                Self::add_capability_to(SpirVCapability::MeshShadingEXT, &mut self.capabilities)?;
+                SpirVExecutionModel::TaskEXT
+            }
+            5365 => {
+                Self::add_capability_to(SpirVCapability::MeshShadingEXT, &mut self.capabilities)?;
+                SpirVExecutionModel::MeshEXT
+            }
             _ => return Err(anyhow!("Invalid Execution Model ID.")),
+        })
+    }
+
+    pub fn parse_source_language(&mut self) -> Result<SpirVSourceLanguage> {
+        let instruction = self.advance()?;
+
+        Ok(match instruction {
+            1 => SpirVSourceLanguage::Essl,
+            2 => SpirVSourceLanguage::Glsl,
+            3 => SpirVSourceLanguage::OpenCLC,
+            4 => SpirVSourceLanguage::OpenCLCpp,
+            5 => SpirVSourceLanguage::Hlsl,
+            6 => SpirVSourceLanguage::CppForOpenCL,
+            7 => SpirVSourceLanguage::Sycl,
+            8 => SpirVSourceLanguage::HeroC,
+            9 => SpirVSourceLanguage::Nzsl,
+            10 => SpirVSourceLanguage::Wgsl,
+            11 => SpirVSourceLanguage::Slang,
+            12 => SpirVSourceLanguage::Zig,
+            13 => SpirVSourceLanguage::Rust,
+            0 | 14.. => SpirVSourceLanguage::Unknown,
         })
     }
 
@@ -280,10 +288,57 @@ impl Parser {
         let mut result = SpirVOp::default();
 
         result.value = match op_code {
-            17 => SpirVValue::Capability(self.parse_op_capability()?),
+            3 => {
+                let source_language = self.parse_source_language()?;
+                // word_count - source_language
+                let words_left = word_count - 3;
+                let version = self.advance()?;
+
+                if words_left != 0 {
+                    todo!("Handle optional <id> File and <Literal> Source.");
+                }
+
+                SpirVValue::Source(SpirVSource {
+                    source_language,
+                    version,
+                })
+            }
+            4 => SpirVValue::SourceExtension(self.parse_literal()?.1),
+            5 => {
+                let id = SpirVVariableId(self.advance()?);
+                let name = self.parse_literal()?.1;
+                self.name_table.insert(
+                    id,
+                    SpirVName {
+                        name: name.clone(),
+                        member_names: vec![],
+                    },
+                );
+                SpirVValue::Name(id, name)
+            }
+            6 => {
+                let id = SpirVVariableId(self.advance()?);
+                let member_id = self.advance()? as usize;
+                let member_name = self.parse_literal()?.1;
+                let member_names_vec = &mut self.name_table.get_mut(&id).unwrap().member_names;
+
+                if member_names_vec.len() <= member_id {
+                    let difference = member_id - member_names_vec.len() + 1;
+                    member_names_vec.resize(member_names_vec.len() + difference, String::new());
+                }
+
+                member_names_vec[member_id] = member_name.clone();
+                SpirVValue::MemberName(id, member_id, member_name)
+            }
             11 => {
                 result.id = self.advance()?;
                 SpirVValue::ExtendedInstructionImport(self.parse_literal()?.1)
+            }
+            17 => {
+                let capability = self.parse_op_capability()?;
+                Self::add_capability_to(capability.clone(), &mut self.capabilities)?;
+                Self::update_implicit_capabilities(&mut self.capabilities)?;
+                SpirVValue::Capability(capability)
             }
             14 => {
                 let addressing_model = self.parse_addressing_model()?;
@@ -305,17 +360,96 @@ impl Parser {
                     arguments.push(SpirVVariableId(self.advance()?));
                 }
 
-                dbg!(SpirVValue::EntryPoint(SpirVEntryPoint {
+                SpirVValue::EntryPoint(SpirVEntryPoint {
                     name: name.1,
                     execution_model,
                     entry_point_id,
                     arguments,
-                }))
+                })
+            }
+            19 => {
+                todo!()
+            }
+            71 => {
+                let target_id = SpirVVariableId(self.advance()?);
+                let decorate = self.parse_decorate_type()?;
+                self.decorate_table.insert(
+                    target_id,
+                    SpirVDecorate {
+                        ty: decorate.clone(),
+                        member_decorates: vec![],
+                    },
+                );
+
+                SpirVValue::Decorate(target_id, decorate)
+            }
+            72 => {
+                let struct_id = SpirVVariableId(self.advance()?);
+                let member_id = self.advance()? as usize;
+                let member_decorate = self.parse_decorate_type()?;
+                let member_decorates_vec = &mut self
+                    .decorate_table
+                    .get_mut(&struct_id)
+                    .unwrap()
+                    .member_decorates;
+
+                if member_decorates_vec.len() <= member_id {
+                    let difference = member_id - member_decorates_vec.len() + 1;
+                    member_decorates_vec.resize(
+                        member_decorates_vec.len() + difference,
+                        SpirVDecorateType::default(),
+                    );
+                }
+
+                member_decorates_vec[member_id] = member_decorate.clone();
+
+                SpirVValue::MemberDecorate(struct_id, member_id, member_decorate)
             }
             _ => todo!("{:?}", (op_code, word_count)),
         };
 
         Ok(result)
+    }
+
+    pub fn parse_built_in(&mut self) -> Result<SpirVBuiltIn> {
+        let v = self.advance()?;
+        Ok(match v {
+            0 => {
+                Self::add_capability_to(SpirVCapability::Shader, &mut self.capabilities)?;
+                SpirVBuiltIn::Position
+            }
+            1 => {
+                Self::add_capability_to(SpirVCapability::Shader, &mut self.capabilities)?;
+                SpirVBuiltIn::PointSize
+            }
+            3 => {
+                Self::add_capability_to(SpirVCapability::ClipDistance, &mut self.capabilities)?;
+                SpirVBuiltIn::ClipDistance
+            }
+            4 => {
+                Self::add_capability_to(SpirVCapability::CullDistance, &mut self.capabilities)?;
+                SpirVBuiltIn::CullDistance
+            }
+            42 => {
+                Self::add_capability_to(SpirVCapability::Shader, &mut self.capabilities)?;
+                SpirVBuiltIn::VertexIndex
+            }
+            _ => todo!(),
+        })
+    }
+
+    pub fn parse_decorate_type(&mut self) -> Result<SpirVDecorateType> {
+        let v = self.advance()?;
+
+        Ok(match v {
+            2 => {
+                Self::add_capability_to(SpirVCapability::Shader, &mut self.capabilities)?;
+                SpirVDecorateType::Block
+            }
+            11 => SpirVDecorateType::BuiltIn(self.parse_built_in()?),
+            30 => SpirVDecorateType::Location(self.advance()?),
+            _ => todo!(),
+        })
     }
 
     pub fn add_capability_to(
@@ -434,15 +568,6 @@ impl Parser {
         let pos = self.position as usize;
         while pos < self.content.len() {
             let op = self.parse_op()?;
-
-            match &op.value {
-                SpirVValue::Capability(capability) => {
-                    Self::add_capability_to(capability.clone(), &mut self.capabilities)?;
-                    Self::update_implicit_capabilities(&mut self.capabilities)?;
-                }
-                _ => {}
-            }
-
             operands.push(op);
         }
 

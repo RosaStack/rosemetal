@@ -21,6 +21,83 @@ pub enum SpirVValue {
     ExtendedInstructionImport(String),
     MemoryModel(SpirVAddressingModel, SpirVMemoryModel),
     EntryPoint(SpirVEntryPoint),
+    Source(SpirVSource),
+    SourceExtension(String),
+    Name(SpirVVariableId, String),
+    MemberName(SpirVVariableId, usize, String),
+    Decorate(SpirVVariableId, SpirVDecorateType),
+    MemberDecorate(SpirVVariableId, usize, SpirVDecorateType),
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVDecorate {
+    pub ty: SpirVDecorateType,
+    pub member_decorates: Vec<SpirVDecorateType>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub enum SpirVDecorateType {
+    #[default]
+    Block,
+    BuiltIn(SpirVBuiltIn),
+    Location(u32),
+}
+
+#[derive(Debug, Default, Clone)]
+pub enum SpirVBuiltIn {
+    #[default]
+    Position,
+    PointSize,
+    ClipDistance,
+    CullDistance,
+    VertexId,
+    InstanceId,
+    PrimitiveId,
+    InvocationId,
+    Layer,
+    ViewportIndex,
+    TessLevelOuter,
+    TessLevelInner,
+    TessCoord,
+    PatchVertices,
+    FragCoord,
+    PointCoord,
+    FrontFacing,
+    SampleId,
+    SamplePosition,
+    SampleMask,
+    FragDepth,
+    HelperInvocation,
+    NumWorkgroups,
+    WorkgroupSize,
+    WorkgroupId,
+    LocalInvocationId,
+    GlobalInvocationId,
+    LocalInvocationIndex,
+    WorkDim,
+    GlobalSize,
+    EnqueuedWorkgroupSize,
+    GlobalOffset,
+    GlobalLinearId,
+    SubgroupSize,
+    SubgroupMaxSize,
+    NumSubgroups,
+    NumEnqueuedSubgroups,
+    SubgroupId,
+    SubgroupLocalInvocationId,
+    VertexIndex,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVName {
+    pub name: String,
+    pub member_names: Vec<String>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVSource {
+    pub source_language: SpirVSourceLanguage,
+    pub version: u32,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -33,6 +110,25 @@ pub struct SpirVEntryPoint {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SpirVVariableId(pub u32);
+
+#[derive(Debug, Default, Clone)]
+pub enum SpirVSourceLanguage {
+    #[default]
+    Unknown,
+    Essl,
+    Glsl,
+    OpenCLC,
+    OpenCLCpp,
+    Hlsl,
+    CppForOpenCL,
+    Sycl,
+    HeroC,
+    Nzsl,
+    Wgsl,
+    Slang,
+    Zig,
+    Rust,
+}
 
 #[derive(Debug, Default, Clone)]
 pub enum SpirVAddressingModel {
