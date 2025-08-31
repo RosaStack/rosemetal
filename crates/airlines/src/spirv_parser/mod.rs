@@ -1,6 +1,6 @@
 pub mod items;
 
-use std::{collections::HashMap, u32};
+use std::{collections::HashMap, hash::Hash, u32};
 
 use anyhow::{Result, anyhow};
 pub use items::*;
@@ -10,8 +10,16 @@ pub struct Parser {
     signature: SpirVSignature,
     content: Vec<u32>,
     operands: Vec<SpirVOp>,
+    addressing_model: Option<SpirVAddressingModel>,
+    memory_model: Option<SpirVMemoryModel>,
     name_table: HashMap<SpirVVariableId, SpirVName>,
+    entry_point_table: HashMap<SpirVVariableId, SpirVEntryPoint>,
     decorate_table: HashMap<SpirVVariableId, SpirVDecorate>,
+    type_table: HashMap<SpirVVariableId, SpirVType>,
+    alloca_table: HashMap<SpirVVariableId, SpirVAlloca>,
+    constants_table: HashMap<SpirVVariableId, SpirVConstant>,
+    constant_composites_table: HashMap<SpirVVariableId, SpirVConstantComposite>,
+    functions_table: HashMap<SpirVVariableId, SpirVFunction>,
     capabilities: Vec<SpirVCapability>,
 }
 
@@ -36,8 +44,16 @@ impl Parser {
             },
             operands: vec![],
             capabilities: vec![],
+            addressing_model: None,
+            memory_model: None,
             name_table: HashMap::new(),
+            entry_point_table: HashMap::new(),
             decorate_table: HashMap::new(),
+            constants_table: HashMap::new(),
+            constant_composites_table: HashMap::new(),
+            alloca_table: HashMap::new(),
+            functions_table: HashMap::new(),
+            type_table: HashMap::new(),
         }
     }
 
@@ -285,10 +301,8 @@ impl Parser {
         let op_code = u16::from_le_bytes([first_word[0], first_word[1]]);
         let word_count = u16::from_le_bytes([first_word[2], first_word[3]]);
 
-        let mut result = SpirVOp::default();
-
-        result.value = match op_code {
-            3 => {
+        Ok(match SpirVOpCode::from_u32(op_code as u32) {
+            SpirVOpCode::SourceLanguage => {
                 let source_language = self.parse_source_language()?;
                 // word_count - source_language
                 let words_left = word_count - 3;
@@ -298,13 +312,13 @@ impl Parser {
                     todo!("Handle optional <id> File and <Literal> Source.");
                 }
 
-                SpirVValue::Source(SpirVSource {
+                SpirVOp::Source(SpirVSource {
                     source_language,
                     version,
                 })
             }
-            4 => SpirVValue::SourceExtension(self.parse_literal()?.1),
-            5 => {
+            SpirVOpCode::SourceExtension => SpirVOp::SourceExtension(self.parse_literal()?.1),
+            SpirVOpCode::Name => {
                 let id = SpirVVariableId(self.advance()?);
                 let name = self.parse_literal()?.1;
                 self.name_table.insert(
@@ -314,9 +328,9 @@ impl Parser {
                         member_names: vec![],
                     },
                 );
-                SpirVValue::Name(id, name)
+                SpirVOp::Name(id, name)
             }
-            6 => {
+            SpirVOpCode::MemberName => {
                 let id = SpirVVariableId(self.advance()?);
                 let member_id = self.advance()? as usize;
                 let member_name = self.parse_literal()?.1;
@@ -328,24 +342,20 @@ impl Parser {
                 }
 
                 member_names_vec[member_id] = member_name.clone();
-                SpirVValue::MemberName(id, member_id, member_name)
+                SpirVOp::MemberName(id, member_id, member_name)
             }
-            11 => {
-                result.id = self.advance()?;
-                SpirVValue::ExtendedInstructionImport(self.parse_literal()?.1)
+            SpirVOpCode::ExtInstImport => {
+                let result_id = SpirVVariableId(self.advance()?);
+                SpirVOp::ExtendedInstructionImport(result_id, self.parse_literal()?.1)
             }
-            17 => {
-                let capability = self.parse_op_capability()?;
-                Self::add_capability_to(capability.clone(), &mut self.capabilities)?;
-                Self::update_implicit_capabilities(&mut self.capabilities)?;
-                SpirVValue::Capability(capability)
-            }
-            14 => {
+            SpirVOpCode::MemoryModel => {
                 let addressing_model = self.parse_addressing_model()?;
                 let memory_model = self.parse_memory_model()?;
-                SpirVValue::MemoryModel(addressing_model, memory_model)
+                self.addressing_model = Some(addressing_model.clone());
+                self.memory_model = Some(memory_model.clone());
+                SpirVOp::MemoryModel(addressing_model, memory_model)
             }
-            15 => {
+            SpirVOpCode::EntryPoint => {
                 let execution_model = self.parse_execution_model()?;
                 let entry_point_id = SpirVVariableId(self.advance()?);
 
@@ -360,17 +370,253 @@ impl Parser {
                     arguments.push(SpirVVariableId(self.advance()?));
                 }
 
-                SpirVValue::EntryPoint(SpirVEntryPoint {
+                let entry_point = SpirVEntryPoint {
                     name: name.1,
                     execution_model,
                     entry_point_id,
                     arguments,
-                })
+                };
+
+                self.entry_point_table
+                    .insert(entry_point_id, entry_point.clone());
+                SpirVOp::EntryPoint(entry_point)
             }
-            19 => {
-                todo!()
+            SpirVOpCode::Capability => {
+                let capability = self.parse_op_capability()?;
+                Self::add_capability_to(capability.clone(), &mut self.capabilities)?;
+                Self::update_implicit_capabilities(&mut self.capabilities)?;
+                SpirVOp::Capability(capability)
             }
-            71 => {
+            SpirVOpCode::TypeVoid => {
+                let target_id = SpirVVariableId(self.advance()?);
+                self.type_table.insert(target_id, SpirVType::Void);
+
+                SpirVOp::Type(target_id, SpirVType::Void)
+            }
+            SpirVOpCode::TypeInt => {
+                let target_id = SpirVVariableId(self.advance()?);
+                let width = self.advance()?;
+                let is_signed = self.advance()? != 0;
+
+                self.type_table
+                    .insert(target_id, SpirVType::Int(width, is_signed));
+                SpirVOp::Type(target_id, SpirVType::Int(width, is_signed))
+            }
+            SpirVOpCode::TypeFloat => {
+                let words_left = word_count - 3;
+                let target_id = SpirVVariableId(self.advance()?);
+                let width = self.advance()?;
+
+                if words_left != 0 {
+                    todo!("Parsing the floating point encoding.");
+                }
+
+                self.type_table.insert(target_id, SpirVType::Float(width));
+                SpirVOp::Type(target_id, SpirVType::Float(width))
+            }
+            SpirVOpCode::TypeVector => {
+                let target_id = SpirVVariableId(self.advance()?);
+                let vector_type = SpirVVariableId(self.advance()?);
+                let size = self.advance()?;
+
+                self.type_table
+                    .insert(target_id, SpirVType::Vector(vector_type, size));
+
+                SpirVOp::Type(target_id, SpirVType::Vector(vector_type, size))
+            }
+            SpirVOpCode::TypeArray => {
+                let target_id = SpirVVariableId(self.advance()?);
+                let array_type = SpirVVariableId(self.advance()?);
+                let length = self.advance()?;
+
+                self.type_table
+                    .insert(target_id, SpirVType::Array(array_type, length));
+
+                SpirVOp::Type(target_id, SpirVType::Array(array_type, length))
+            }
+            SpirVOpCode::TypePointer => {
+                let target_id = SpirVVariableId(self.advance()?);
+                let storage_class = self.parse_storage_class()?;
+                let type_id = SpirVVariableId(self.advance()?);
+
+                self.type_table
+                    .insert(target_id, SpirVType::Pointer(storage_class, type_id));
+
+                SpirVOp::Type(target_id, SpirVType::Pointer(storage_class, type_id))
+            }
+            SpirVOpCode::TypeFunction => {
+                let target_id = SpirVVariableId(self.advance()?);
+                let type_id = SpirVVariableId(self.advance()?);
+
+                self.type_table
+                    .insert(target_id, SpirVType::Function(type_id));
+
+                SpirVOp::Type(target_id, SpirVType::Function(type_id))
+            }
+            SpirVOpCode::Constant => {
+                let type_id = SpirVVariableId(self.advance()?);
+                let target_id = SpirVVariableId(self.advance()?);
+
+                let constant = {
+                    let words_left = word_count - 3;
+                    let mut values = vec![];
+                    for _i in 0..words_left {
+                        values.push(self.advance()?.to_le_bytes());
+                    }
+
+                    match self.type_table.get(&type_id) {
+                        Some(ty) => match ty {
+                            SpirVType::Int(width, is_signed) => SpirVConstant {
+                                type_id,
+                                value: if *is_signed {
+                                    SpirVConstantValue::SignedInteger(match width {
+                                        8 => i8::from_le_bytes([values[0][0]]) as i64,
+                                        16 => {
+                                            i16::from_le_bytes([values[0][0], values[0][1]]) as i64
+                                        }
+                                        32 => i32::from_le_bytes([
+                                            values[0][0],
+                                            values[0][1],
+                                            values[0][2],
+                                            values[0][3],
+                                        ]) as i64,
+                                        64 => i64::from_le_bytes([
+                                            values[0][0],
+                                            values[0][1],
+                                            values[0][2],
+                                            values[0][3],
+                                            values[1][0],
+                                            values[1][1],
+                                            values[1][2],
+                                            values[1][3],
+                                        ]),
+                                        _ => {
+                                            return Err(anyhow!(
+                                                "Invalid Signed Integer Width '{:?}'",
+                                                width
+                                            ));
+                                        }
+                                    })
+                                } else {
+                                    SpirVConstantValue::UnsignedInteger(match width {
+                                        8 => u8::from_le_bytes([values[0][0]]) as u64,
+                                        16 => {
+                                            u16::from_le_bytes([values[0][0], values[0][1]]) as u64
+                                        }
+                                        32 => u32::from_le_bytes([
+                                            values[0][0],
+                                            values[0][1],
+                                            values[0][2],
+                                            values[0][3],
+                                        ]) as u64,
+                                        64 => u64::from_le_bytes([
+                                            values[0][0],
+                                            values[0][1],
+                                            values[0][2],
+                                            values[0][3],
+                                            values[1][0],
+                                            values[1][1],
+                                            values[1][2],
+                                            values[1][3],
+                                        ]),
+                                        _ => {
+                                            return Err(anyhow!(
+                                                "Invalid Unsigned Integer Width '{:?}'",
+                                                width
+                                            ));
+                                        }
+                                    })
+                                },
+                            },
+                            SpirVType::Float(width) => SpirVConstant {
+                                type_id,
+                                value: match width {
+                                    32 => SpirVConstantValue::Float32(f32::from_le_bytes([
+                                        values[0][0],
+                                        values[0][1],
+                                        values[0][2],
+                                        values[0][3],
+                                    ])),
+                                    64 => SpirVConstantValue::Float64(f64::from_le_bytes([
+                                        values[0][0],
+                                        values[0][1],
+                                        values[0][2],
+                                        values[0][3],
+                                        values[1][0],
+                                        values[1][1],
+                                        values[1][2],
+                                        values[1][3],
+                                    ])),
+                                    _ => {
+                                        return Err(anyhow!(
+                                            "Expected 32 or 64 width, found {:?}",
+                                            width
+                                        ));
+                                    }
+                                },
+                            },
+                            _ => {
+                                return Err(anyhow!(
+                                    "Expected Integer or Floating-Point Types, found '{:?}'",
+                                    ty
+                                ));
+                            }
+                        },
+                        None => {
+                            return Err(anyhow!(
+                                "Type ID {:?} not found in Type Table.",
+                                type_id.0
+                            ));
+                        }
+                    }
+                };
+
+                self.constants_table.insert(target_id, constant.clone());
+                SpirVOp::Constant(target_id, constant)
+            }
+            SpirVOpCode::ConstantComposite => {
+                let type_id = SpirVVariableId(self.advance()?);
+                let target_id = SpirVVariableId(self.advance()?);
+
+                let mut values = vec![];
+                for _i in 0..word_count - 3 {
+                    values.push(SpirVVariableId(self.advance()?));
+                }
+
+                let constant_composite = SpirVConstantComposite { type_id, values };
+
+                self.constant_composites_table
+                    .insert(target_id, constant_composite.clone());
+                SpirVOp::ConstantComposite(target_id, constant_composite)
+            }
+            SpirVOpCode::Variable => {
+                let type_id = SpirVVariableId(self.advance()?);
+
+                if !matches!(
+                    self.type_table.get(&type_id).unwrap(),
+                    SpirVType::Pointer(_, _)
+                ) {
+                    return Err(anyhow!("Result Type must've be a Pointer Type."));
+                }
+
+                let target_id = SpirVVariableId(self.advance()?);
+                let storage_class = self.parse_storage_class()?;
+                let initializer = match word_count - 4 == 0 {
+                    false => Some(SpirVVariableId(self.advance()?)),
+                    true => None,
+                };
+
+                let alloca = SpirVAlloca {
+                    type_id,
+                    storage_class,
+                    initializer,
+                };
+
+                self.alloca_table.insert(target_id, alloca.clone());
+
+                SpirVOp::Alloca(target_id, alloca)
+            }
+            SpirVOpCode::Decorate => {
                 let target_id = SpirVVariableId(self.advance()?);
                 let decorate = self.parse_decorate_type()?;
                 self.decorate_table.insert(
@@ -381,9 +627,9 @@ impl Parser {
                     },
                 );
 
-                SpirVValue::Decorate(target_id, decorate)
+                SpirVOp::Decorate(target_id, decorate)
             }
-            72 => {
+            SpirVOpCode::MemberDecorate => {
                 let struct_id = SpirVVariableId(self.advance()?);
                 let member_id = self.advance()? as usize;
                 let member_decorate = self.parse_decorate_type()?;
@@ -403,12 +649,111 @@ impl Parser {
 
                 member_decorates_vec[member_id] = member_decorate.clone();
 
-                SpirVValue::MemberDecorate(struct_id, member_id, member_decorate)
+                SpirVOp::MemberDecorate(struct_id, member_id, member_decorate)
+            }
+            SpirVOpCode::TypeStruct => {
+                let target_id = SpirVVariableId(self.advance()?);
+
+                let mut types = vec![];
+                for _i in 0..word_count - 2 {
+                    types.push(SpirVVariableId(self.advance()?));
+                }
+
+                self.type_table
+                    .insert(target_id, SpirVType::Struct(types.clone()));
+
+                SpirVOp::Type(target_id, SpirVType::Struct(types))
+            }
+            SpirVOpCode::Function => {
+                let type_id = SpirVVariableId(self.advance()?);
+                let target_id = SpirVVariableId(self.advance()?);
+                let function_control = FunctionControl::from_u32(self.advance()?);
+                let function_type_id = SpirVVariableId(self.advance()?);
+
+                let mut instructions: Vec<SpirVOp> = vec![];
+                let mut op = self.parse_op()?;
+
+                while !matches!(op, SpirVOp::FunctionEnd) {
+                    instructions.push(dbg!(op.clone()));
+                    op = self.parse_op()?;
+                }
+
+                let function = SpirVFunction {
+                    function_type_id,
+                    instructions,
+                };
+
+                todo!("{:?}", function)
+            }
+            SpirVOpCode::Label => {
+                let result_id = SpirVVariableId(self.advance()?);
+
+                let mut instructions: Vec<SpirVOp> = vec![];
+                let mut op = self.parse_op()?;
+
+                while !matches!(op, SpirVOp::FunctionEnd) {
+                    instructions.push(dbg!(op.clone()));
+                    op = self.parse_op()?;
+                }
+
+                let block = SpirVBlock { instructions };
+
+                SpirVOp::Block(result_id, block)
+            }
+            SpirVOpCode::Store => {
+                let pointer_id = SpirVVariableId(self.advance()?);
+                let object_id = SpirVVariableId(self.advance()?);
+                let memory_operands = match word_count - 3 == 0 {
+                    false => SpirVMemoryOperands::from_u32(self.advance()?),
+                    true => SpirVMemoryOperands::None,
+                };
+
+                SpirVOp::Store(SpirVStore {
+                    pointer_id,
+                    object_id,
+                    memory_operands,
+                })
+            }
+            SpirVOpCode::Load => {
+                let type_id = SpirVVariableId(self.advance()?);
+                let result_id = SpirVVariableId(self.advance()?);
+                let pointer_id = SpirVVariableId(self.advance()?);
+                let memory_operands = match word_count - 4 == 0 {
+                    false => SpirVMemoryOperands::from_u32(self.advance()?),
+                    true => SpirVMemoryOperands::None,
+                };
+
+                SpirVOp::Load(
+                    result_id,
+                    SpirVLoad {
+                        type_id,
+                        pointer_id,
+                        memory_operands,
+                    },
+                )
             }
             _ => todo!("{:?}", (op_code, word_count)),
-        };
+        })
+    }
 
-        Ok(result)
+    pub fn parse_storage_class(&mut self) -> Result<SpirVStorageClass> {
+        let v = self.advance()?;
+        Ok(match v {
+            0 => SpirVStorageClass::UniformConstant,
+            1 => SpirVStorageClass::Input,
+            2 => SpirVStorageClass::Uniform,
+            3 => SpirVStorageClass::Output,
+            4 => SpirVStorageClass::Workgroup,
+            5 => SpirVStorageClass::CrossWorkgroup,
+            6 => SpirVStorageClass::Private,
+            7 => SpirVStorageClass::Function,
+            8 => SpirVStorageClass::Generic,
+            9 => SpirVStorageClass::PushConstant,
+            10 => SpirVStorageClass::AtomicCounter,
+            11 => SpirVStorageClass::Image,
+            12 => SpirVStorageClass::StorageBuffer,
+            _ => todo!("{:?}", v),
+        })
     }
 
     pub fn parse_built_in(&mut self) -> Result<SpirVBuiltIn> {

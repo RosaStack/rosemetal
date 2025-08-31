@@ -8,17 +8,11 @@ pub struct SpirVSignature {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct SpirVOp {
-    pub id: u32,
-    pub value: SpirVValue,
-}
-
-#[derive(Debug, Default, Clone)]
-pub enum SpirVValue {
+pub enum SpirVOp {
     #[default]
     Empty,
     Capability(SpirVCapability),
-    ExtendedInstructionImport(String),
+    ExtendedInstructionImport(SpirVVariableId, String),
     MemoryModel(SpirVAddressingModel, SpirVMemoryModel),
     EntryPoint(SpirVEntryPoint),
     Source(SpirVSource),
@@ -27,6 +21,131 @@ pub enum SpirVValue {
     MemberName(SpirVVariableId, usize, String),
     Decorate(SpirVVariableId, SpirVDecorateType),
     MemberDecorate(SpirVVariableId, usize, SpirVDecorateType),
+    Type(SpirVVariableId, SpirVType),
+    Constant(SpirVVariableId, SpirVConstant),
+    ConstantComposite(SpirVVariableId, SpirVConstantComposite),
+    Alloca(SpirVVariableId, SpirVAlloca),
+    FunctionEnd,
+    Block(SpirVVariableId, SpirVBlock),
+    Store(SpirVStore),
+    Load(SpirVVariableId, SpirVLoad),
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVStore {
+    pub pointer_id: SpirVVariableId,
+    pub object_id: SpirVVariableId,
+    pub memory_operands: SpirVMemoryOperands,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVLoad {
+    pub type_id: SpirVVariableId,
+    pub pointer_id: SpirVVariableId,
+    pub memory_operands: SpirVMemoryOperands,
+}
+
+#[derive(Debug, Default, Clone)]
+#[repr(u32)]
+pub enum SpirVMemoryOperands {
+    #[default]
+    None = 0x0,
+    Volatile = 0x1,
+    Aligned = 0x2,
+    NonTemporal = 0x4,
+    MakePointerAvailable = 0x8,
+    MakePointerVisible = 0x10,
+    NonPrivatePointer = 0x20,
+    AliasScopeINTELMask = 0x10000,
+    NoAliasINTELMask = 0x20000,
+}
+
+impl SpirVMemoryOperands {
+    pub fn from_u32(v: u32) -> Self {
+        match v {
+            0x0 => Self::None,
+            0x1 => Self::Volatile,
+            0x2 => Self::Aligned,
+            0x4 => Self::NonTemporal,
+            0x8 => Self::MakePointerAvailable,
+            0x10 => Self::MakePointerVisible,
+            0x20 => Self::NonPrivatePointer,
+            0x10000 => Self::AliasScopeINTELMask,
+            0x20000 => Self::NoAliasINTELMask,
+            _ => unimplemented!("{:#X}", v),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVFunction {
+    pub function_type_id: SpirVVariableId,
+    pub instructions: Vec<SpirVOp>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVBlock {
+    pub instructions: Vec<SpirVOp>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub enum SpirVType {
+    #[default]
+    Void,
+    Function(SpirVVariableId),
+    Float(u32),
+    Int(u32, bool),
+    Vector(SpirVVariableId, u32),
+    Array(SpirVVariableId, u32),
+    Pointer(SpirVStorageClass, SpirVVariableId),
+    Struct(Vec<SpirVVariableId>),
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVAlloca {
+    pub type_id: SpirVVariableId,
+    pub storage_class: SpirVStorageClass,
+    pub initializer: Option<SpirVVariableId>,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub enum SpirVStorageClass {
+    #[default]
+    UniformConstant,
+    Input,
+    Uniform,
+    Output,
+    Workgroup,
+    CrossWorkgroup,
+    Private,
+    Function,
+    Generic,
+    PushConstant,
+    AtomicCounter,
+    Image,
+    StorageBuffer,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVConstant {
+    pub type_id: SpirVVariableId,
+    pub value: SpirVConstantValue,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVConstantComposite {
+    pub type_id: SpirVVariableId,
+    pub values: Vec<SpirVVariableId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub enum SpirVConstantValue {
+    #[default]
+    Undefined,
+    SignedInteger(i64),
+    UnsignedInteger(u64),
+    Float32(f32),
+    Float64(f64),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -168,6 +287,97 @@ pub enum SpirVExecutionModel {
     CallableKHR,
     TaskEXT,
     MeshEXT,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[repr(u32)]
+pub enum SpirVOpCode {
+    #[default]
+    Empty = 0,
+    SourceLanguage = 3,
+    SourceExtension = 4,
+    Name = 5,
+    MemberName = 6,
+    ExtInstImport = 11,
+    MemoryModel = 14,
+    EntryPoint = 15,
+    Capability = 17,
+    TypeVoid = 19,
+    TypeInt = 21,
+    TypeFloat = 22,
+    TypeVector = 23,
+    TypeArray = 28,
+    TypeStruct = 30,
+    TypePointer = 32,
+    TypeFunction = 33,
+    Constant = 43,
+    ConstantComposite = 44,
+    Function = 54,
+    Variable = 59,
+    Load = 61,
+    Store = 62,
+    Decorate = 71,
+    MemberDecorate = 72,
+    Label = 248,
+}
+
+impl SpirVOpCode {
+    pub fn from_u32(v: u32) -> Self {
+        match v {
+            3 => Self::SourceLanguage,
+            4 => Self::SourceExtension,
+            5 => Self::Name,
+            6 => Self::MemberName,
+            11 => Self::ExtInstImport,
+            14 => Self::MemoryModel,
+            15 => Self::EntryPoint,
+            17 => Self::Capability,
+            19 => Self::TypeVoid,
+            21 => Self::TypeInt,
+            22 => Self::TypeFloat,
+            23 => Self::TypeVector,
+            28 => Self::TypeArray,
+            30 => Self::TypeStruct,
+            32 => Self::TypePointer,
+            33 => Self::TypeFunction,
+            43 => Self::Constant,
+            44 => Self::ConstantComposite,
+            54 => Self::Function,
+            59 => Self::Variable,
+            61 => Self::Load,
+            62 => Self::Store,
+            71 => Self::Decorate,
+            72 => Self::MemberDecorate,
+            248 => Self::Label,
+            _ => todo!("{:?}", v),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+#[repr(u32)]
+pub enum FunctionControl {
+    #[default]
+    None = 0x0,
+    Inline = 0x1,
+    DontInline = 0x2,
+    Pure = 0x4,
+    Const = 0x8,
+    OptNoneEXT = 0x10000,
+}
+
+impl FunctionControl {
+    pub fn from_u32(v: u32) -> Self {
+        match v {
+            0x0 => Self::None,
+            0x1 => Self::Inline,
+            0x2 => Self::DontInline,
+            0x4 => Self::Pure,
+            0x8 => Self::Const,
+            0x10000 => Self::OptNoneEXT,
+            _ => unimplemented!(),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
