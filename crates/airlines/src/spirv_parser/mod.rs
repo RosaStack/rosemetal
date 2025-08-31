@@ -6,21 +6,21 @@ use anyhow::{Result, anyhow};
 pub use items::*;
 
 pub struct Parser {
-    position: i64,
-    signature: SpirVSignature,
-    content: Vec<u32>,
-    operands: Vec<SpirVOp>,
-    addressing_model: Option<SpirVAddressingModel>,
-    memory_model: Option<SpirVMemoryModel>,
-    name_table: HashMap<SpirVVariableId, SpirVName>,
-    entry_point_table: HashMap<SpirVVariableId, SpirVEntryPoint>,
-    decorate_table: HashMap<SpirVVariableId, SpirVDecorate>,
-    type_table: HashMap<SpirVVariableId, SpirVType>,
-    alloca_table: HashMap<SpirVVariableId, SpirVAlloca>,
-    constants_table: HashMap<SpirVVariableId, SpirVConstant>,
-    constant_composites_table: HashMap<SpirVVariableId, SpirVConstantComposite>,
-    functions_table: HashMap<SpirVVariableId, SpirVFunction>,
-    capabilities: Vec<SpirVCapability>,
+    pub position: i64,
+    pub signature: SpirVSignature,
+    pub content: Vec<u32>,
+    pub operands: Vec<SpirVOp>,
+    pub addressing_model: Option<SpirVAddressingModel>,
+    pub memory_model: Option<SpirVMemoryModel>,
+    pub name_table: HashMap<SpirVVariableId, SpirVName>,
+    pub entry_point_table: HashMap<SpirVVariableId, SpirVEntryPoint>,
+    pub decorate_table: HashMap<SpirVVariableId, SpirVDecorate>,
+    pub type_table: HashMap<SpirVVariableId, SpirVType>,
+    pub alloca_table: HashMap<SpirVVariableId, SpirVAlloca>,
+    pub constants_table: HashMap<SpirVVariableId, SpirVConstant>,
+    pub constant_composites_table: HashMap<SpirVVariableId, SpirVConstantComposite>,
+    pub functions_table: HashMap<SpirVVariableId, SpirVFunction>,
+    pub capabilities: Vec<SpirVCapability>,
 }
 
 impl Parser {
@@ -665,8 +665,8 @@ impl Parser {
                 SpirVOp::Type(target_id, SpirVType::Struct(types))
             }
             SpirVOpCode::Function => {
-                let type_id = SpirVVariableId(self.advance()?);
-                let target_id = SpirVVariableId(self.advance()?);
+                let return_type_id = SpirVVariableId(self.advance()?);
+                let result_id = SpirVVariableId(self.advance()?);
                 let function_control = FunctionControl::from_u32(self.advance()?);
                 let function_type_id = SpirVVariableId(self.advance()?);
 
@@ -674,16 +674,22 @@ impl Parser {
                 let mut op = self.parse_op()?;
 
                 while !matches!(op, SpirVOp::FunctionEnd) {
-                    instructions.push(dbg!(op.clone()));
+                    instructions.push(op.clone());
                     op = self.parse_op()?;
                 }
 
+                instructions.push(op.clone());
+
                 let function = SpirVFunction {
                     function_type_id,
+                    return_type_id,
+                    function_control,
                     instructions,
                 };
 
-                todo!("{:?}", function)
+                self.functions_table.insert(result_id, function.clone());
+
+                SpirVOp::Function(result_id, function)
             }
             SpirVOpCode::Label => {
                 let result_id = SpirVVariableId(self.advance()?);
@@ -691,10 +697,12 @@ impl Parser {
                 let mut instructions: Vec<SpirVOp> = vec![];
                 let mut op = self.parse_op()?;
 
-                while !matches!(op, SpirVOp::FunctionEnd) {
-                    instructions.push(dbg!(op.clone()));
+                while !matches!(op, SpirVOp::Return) {
+                    instructions.push(op.clone());
                     op = self.parse_op()?;
                 }
+
+                instructions.push(op.clone());
 
                 let block = SpirVBlock { instructions };
 
@@ -732,6 +740,58 @@ impl Parser {
                     },
                 )
             }
+            SpirVOpCode::AccessChain => {
+                let type_id = SpirVVariableId(self.advance()?);
+                let result_id = SpirVVariableId(self.advance()?);
+                let base_id = SpirVVariableId(self.advance()?);
+
+                let mut indices = vec![];
+                for _i in 0..word_count - 4 {
+                    indices.push(SpirVVariableId(self.advance()?));
+                }
+
+                SpirVOp::AccessChain(
+                    result_id,
+                    SpirVAccessChain {
+                        type_id,
+                        base_id,
+                        indices,
+                    },
+                )
+            }
+            SpirVOpCode::CompositeExtract => {
+                let type_id = SpirVVariableId(self.advance()?);
+                let result_id = SpirVVariableId(self.advance()?);
+                let composite_id = SpirVVariableId(self.advance()?);
+                let mut indices = vec![];
+                for _i in 0..word_count - 4 {
+                    indices.push(self.advance()?);
+                }
+
+                SpirVOp::CompositeExtract(
+                    result_id,
+                    SpirVCompositeExtract {
+                        type_id,
+                        composite_id,
+                        indices,
+                    },
+                )
+            }
+            SpirVOpCode::CompositeConstruct => {
+                let type_id = SpirVVariableId(self.advance()?);
+                let result_id = SpirVVariableId(self.advance()?);
+                let mut elements = vec![];
+                for _i in 0..word_count - 3 {
+                    elements.push(SpirVVariableId(self.advance()?));
+                }
+
+                SpirVOp::CompositeConstruct(
+                    result_id,
+                    SpirVCompositeConstruct { type_id, elements },
+                )
+            }
+            SpirVOpCode::Return => SpirVOp::Return,
+            SpirVOpCode::FunctionEnd => SpirVOp::FunctionEnd,
             _ => todo!("{:?}", (op_code, word_count)),
         })
     }
@@ -908,14 +968,14 @@ impl Parser {
 
     pub fn start(&mut self) -> Result<()> {
         self.signature = self.get_signature()?;
-        let mut operands: Vec<SpirVOp> = vec![];
 
-        let pos = self.position as usize;
-        while pos < self.content.len() {
+        let mut pos = self.position as usize;
+        while pos < self.content.len() - 1 {
             let op = self.parse_op()?;
-            operands.push(op);
+            self.operands.push(op);
+            pos = self.position as usize;
         }
 
-        todo!("{:?}", self.signature);
+        Ok(())
     }
 }

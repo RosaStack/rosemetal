@@ -29,6 +29,31 @@ pub enum SpirVOp {
     Block(SpirVVariableId, SpirVBlock),
     Store(SpirVStore),
     Load(SpirVVariableId, SpirVLoad),
+    AccessChain(SpirVVariableId, SpirVAccessChain),
+    CompositeExtract(SpirVVariableId, SpirVCompositeExtract),
+    CompositeConstruct(SpirVVariableId, SpirVCompositeConstruct),
+    Return,
+    Function(SpirVVariableId, SpirVFunction),
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVCompositeConstruct {
+    pub type_id: SpirVVariableId,
+    pub elements: Vec<SpirVVariableId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVCompositeExtract {
+    pub type_id: SpirVVariableId,
+    pub composite_id: SpirVVariableId,
+    pub indices: Vec<u32>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVAccessChain {
+    pub type_id: SpirVVariableId,
+    pub base_id: SpirVVariableId,
+    pub indices: Vec<SpirVVariableId>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -80,6 +105,8 @@ impl SpirVMemoryOperands {
 #[derive(Debug, Default, Clone)]
 pub struct SpirVFunction {
     pub function_type_id: SpirVVariableId,
+    pub return_type_id: SpirVVariableId,
+    pub function_control: FunctionControl,
     pub instructions: Vec<SpirVOp>,
 }
 
@@ -313,12 +340,17 @@ pub enum SpirVOpCode {
     Constant = 43,
     ConstantComposite = 44,
     Function = 54,
+    FunctionEnd = 56,
     Variable = 59,
     Load = 61,
     Store = 62,
+    AccessChain = 65,
     Decorate = 71,
     MemberDecorate = 72,
+    CompositeConstruct = 80,
+    CompositeExtract = 81,
     Label = 248,
+    Return = 253,
 }
 
 impl SpirVOpCode {
@@ -343,12 +375,17 @@ impl SpirVOpCode {
             43 => Self::Constant,
             44 => Self::ConstantComposite,
             54 => Self::Function,
+            56 => Self::FunctionEnd,
             59 => Self::Variable,
             61 => Self::Load,
             62 => Self::Store,
+            65 => Self::AccessChain,
             71 => Self::Decorate,
             72 => Self::MemberDecorate,
+            80 => Self::CompositeConstruct,
+            81 => Self::CompositeExtract,
             248 => Self::Label,
+            253 => Self::Return,
             _ => todo!("{:?}", v),
         }
     }

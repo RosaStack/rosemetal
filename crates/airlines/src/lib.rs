@@ -14,7 +14,9 @@ mod tests {
     fn spirv_parser() -> Result<()> {
         let mut parser = super::spirv_parser::Parser::new(std::fs::read("test-files/test.spv")?);
 
-        dbg!(parser.start()?);
+        parser.start()?;
+
+        dbg!(&parser.operands);
 
         Ok(())
     }
