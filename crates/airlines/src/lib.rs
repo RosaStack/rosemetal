@@ -1,3 +1,4 @@
+pub mod air_builder;
 pub mod air_parser;
 pub mod llvm_bitcode;
 pub mod spirv_parser;
@@ -6,9 +7,9 @@ pub mod spirv_parser;
 mod tests {
     use anyhow::Result;
 
-    use super::air_parser::*;
+    use crate::{air_builder::AirBuilder, air_parser::AirType};
+
     use super::llvm_bitcode::*;
-    use super::spirv_parser::*;
 
     #[test]
     fn spirv_parser() -> Result<()> {
@@ -26,6 +27,21 @@ mod tests {
         let mut parser = super::air_parser::Parser::new(std::fs::read("test-files/test.air")?)?;
 
         dbg!(parser.start()?);
+
+        Ok(())
+    }
+
+    #[test]
+    fn air_builder() -> Result<()> {
+        let mut builder = AirBuilder::new();
+
+        builder.identification("Airlines Testing.");
+
+        builder.begin_apple_shader_module("test.metal")?;
+
+        let void_type = builder.new_type(AirType::Void)?;
+
+        dbg!("{:?}", builder.file);
 
         Ok(())
     }

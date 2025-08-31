@@ -387,7 +387,7 @@ pub struct AirFunctionBody {
 #[derive(Debug, Default, Clone)]
 pub struct AirLocal {
     pub id: u64,
-    pub ty: AirType,
+    pub type_id: AirTypeId,
     pub value: Option<AirConstantValue>,
 }
 
@@ -405,6 +405,9 @@ pub struct AirFunctionSignatureId(pub u64);
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AirValueId(pub u64);
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AirTypeId(pub u64);
 
 #[derive(Debug, Default, Clone)]
 pub struct AirModule {
@@ -606,27 +609,27 @@ pub struct AirAttribute {
 #[derive(Debug, Default, Clone)]
 pub struct AirArrayType {
     pub size: u64,
-    pub element_type: Box<AirType>,
+    pub element_type: AirTypeId,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct AirVectorType {
     pub size: u64,
-    pub element_type: Box<AirType>,
+    pub element_type: AirTypeId,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct AirStructType {
     pub name: String,
     pub is_packed: bool,
-    pub elements: Vec<AirType>,
+    pub elements: Vec<AirTypeId>,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct AirFunctionType {
     pub vararg: u64,
-    pub return_type: Box<AirType>,
-    pub params: Vec<AirType>,
+    pub return_type: AirTypeId,
+    pub params: Vec<AirTypeId>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -635,7 +638,7 @@ pub enum AirType {
     Void,
     Float,
     Integer(u64),
-    Pointer(u64, Box<AirType>),
+    Pointer(u64, AirTypeId),
     Array(AirArrayType),
     Vector(AirVectorType),
     Struct(AirStructType),

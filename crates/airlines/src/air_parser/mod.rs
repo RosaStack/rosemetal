@@ -149,22 +149,22 @@ impl Parser {
                         TypeCode::FLOAT => result.push(AirType::Float),
                         TypeCode::VECTOR => result.push(AirType::Vector(AirVectorType {
                             size: record.fields[0],
-                            element_type: Box::new(result[record.fields[1] as usize].clone()),
+                            element_type: AirTypeId(record.fields[1]),
                         })),
                         TypeCode::ARRAY => result.push(AirType::Array(AirArrayType {
                             size: record.fields[0],
-                            element_type: Box::new(result[record.fields[1] as usize].clone()),
+                            element_type: AirTypeId(record.fields[1]),
                         })),
                         TypeCode::STRUCT_NAME => {
                             last_struct_name = Self::parse_string(record.fields);
                         }
                         TypeCode::STRUCT_NAMED | TypeCode::STRUCT_ANON => {
-                            let mut elements: Vec<AirType> = vec![];
+                            let mut elements: Vec<AirTypeId> = vec![];
 
                             let is_packed = record.fields[0] != 0;
 
                             for i in 1..record.fields.len() {
-                                elements.push(result[record.fields[i] as usize].clone());
+                                elements.push(AirTypeId(record.fields[i]));
                             }
 
                             result.push(AirType::Struct(AirStructType {
@@ -178,19 +178,19 @@ impl Parser {
                         TypeCode::INTEGER => result.push(AirType::Integer(record.fields[0])),
                         TypeCode::POINTER => result.push(AirType::Pointer(
                             record.fields[1],
-                            Box::new(result[record.fields[0] as usize].clone()),
+                            AirTypeId(record.fields[0]),
                         )),
                         TypeCode::FUNCTION => {
-                            let mut params: Vec<AirType> = vec![];
+                            let mut params: Vec<AirTypeId> = vec![];
 
                             for i in 2..record.fields.len() {
-                                let i = record.fields[i];
-                                params.push(result[i as usize].clone());
+                                let i = AirTypeId(record.fields[i]);
+                                params.push(i);
                             }
 
                             result.push(AirType::Function(AirFunctionType {
                                 vararg: record.fields[0],
-                                return_type: Box::new(result[record.fields[1] as usize].clone()),
+                                return_type: AirTypeId(record.fields[1]),
                                 params,
                             }));
                         }
@@ -353,10 +353,10 @@ impl Parser {
 
     pub fn parse_constant_value_with_type(
         result: &mut AirModule,
-        ty: &AirType,
+        ty: AirTypeId,
         value: u64,
     ) -> AirConstantValue {
-        match ty {
+        match result.types[ty.0 as usize] {
             AirType::Float => {
                 let result = f32::from_le_bytes((value as u32).to_le_bytes());
                 return AirConstantValue::Float32(result);
@@ -390,7 +390,7 @@ impl Parser {
         for i in fields {
             contents.push(Self::parse_constant_value_with_type(
                 result,
-                &**element_type,
+                *element_type,
                 i,
             ));
         }
@@ -668,9 +668,9 @@ impl Parser {
                             .undiscovered_data
                             .push(UndiscoveredData::INDEX_OFFSET(record.fields[0])),
                         MetadataCodes::VALUE => {
-                            let ty = result.types[record.fields[0] as usize].clone();
+                            let ty = AirTypeId(record.fields[0]);
                             let constant = AirMetadataConstant::Value(
-                                Self::parse_constant_value_with_type(result, &ty, record.fields[1]),
+                                Self::parse_constant_value_with_type(result, ty, record.fields[1]),
                             );
                             let _ = result
                                 .metadata_constants
@@ -777,7 +777,7 @@ impl Parser {
         for i in &function_signature.ty.params {
             result.value_list.push(AirValue::Argument(AirLocal {
                 id: count,
-                ty: i.clone(),
+                type_id: *i,
                 value: None,
             }));
             count += 1;
