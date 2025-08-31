@@ -7,7 +7,10 @@ pub mod spirv_parser;
 mod tests {
     use anyhow::Result;
 
-    use crate::{air_builder::AirBuilder, air_parser::AirType};
+    use crate::{
+        air_builder::AirBuilder,
+        air_parser::{AirArrayType, AirType},
+    };
 
     use super::llvm_bitcode::*;
 
@@ -39,7 +42,11 @@ mod tests {
 
         builder.begin_apple_shader_module("test.metal")?;
 
-        let void_type = builder.new_type(AirType::Void)?;
+        let float = builder.new_type(AirType::Float)?;
+        let _float_array = builder.new_type(AirType::Array(AirArrayType {
+            size: 3,
+            element_type: float,
+        }));
 
         dbg!("{:?}", builder.file);
 
