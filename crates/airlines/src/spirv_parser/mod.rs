@@ -1,6 +1,6 @@
 pub mod items;
 
-use std::{collections::HashMap, hash::Hash, u32};
+use std::{collections::HashMap, u32};
 
 use anyhow::{Result, anyhow};
 pub use items::*;
