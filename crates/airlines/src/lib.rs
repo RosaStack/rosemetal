@@ -9,7 +9,7 @@ mod tests {
 
     use crate::{
         air_builder::AirBuilder,
-        air_parser::{AirArrayType, AirType},
+        air_parser::{AirArrayType, AirConstant, AirConstantValue, AirFunctionType, AirType},
     };
 
     use super::llvm_bitcode::*;
@@ -48,7 +48,25 @@ mod tests {
             element_type: float,
         }));
 
-        dbg!("{:?}", builder.file);
+        let float_const = builder.new_constant(AirConstant {
+            ty: float,
+            value: AirConstantValue::Float32(0_f32),
+        })?;
+
+        let value_one = builder.new_global_variable("first_variable", float, float_const)?;
+        let value_two = builder.new_global_variable("second_variable", float, float_const)?;
+
+        let function_signature = builder.new_function_signature(
+            "main",
+            AirFunctionType {
+                vararg: 0,
+                return_type: float,
+                params: vec![float],
+            },
+        )?;
+        // let function = builder.new_function(function_signature, &[]);
+
+        dbg!(builder.file);
 
         Ok(())
     }

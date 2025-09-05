@@ -377,12 +377,12 @@ impl Parser {
     pub fn parse_constant_data(
         &mut self,
         result: &mut AirModule,
-        array_ty: &AirType,
+        array_ty: AirTypeId,
         fields: Fields,
     ) -> Result<AirConstantValue> {
-        let element_type = match &array_ty {
-            AirType::Vector(v) => &v.element_type,
-            AirType::Array(a) => &a.element_type,
+        let element_type = match result.types[array_ty.0 as usize].clone() {
+            AirType::Vector(v) => v.element_type,
+            AirType::Array(a) => a.element_type,
             _ => todo!(),
         };
 
@@ -390,7 +390,7 @@ impl Parser {
         for i in fields {
             contents.push(Self::parse_constant_value_with_type(
                 result,
-                *element_type,
+                element_type,
                 i,
             ));
         }
@@ -400,7 +400,7 @@ impl Parser {
 
     pub fn parse_constants(&mut self, module: &mut AirModule) -> Result<()> {
         let mut content = self.bitstream.next();
-        let mut current_type = AirType::Void;
+        let mut current_type = AirTypeId(0);
 
         let mut skip_add_one_in_settype = false;
         loop {
@@ -409,7 +409,7 @@ impl Parser {
                     StreamEntry::EndBlock | StreamEntry::EndOfStream => break,
                     StreamEntry::Record(record) => match ConstantsCode::from_u64(record.code) {
                         ConstantsCode::SETTYPE => {
-                            current_type = module.types[record.fields[0] as usize].clone();
+                            current_type = AirTypeId(record.fields[0]);
 
                             if skip_add_one_in_settype {
                                 content = self.bitstream.next();
@@ -484,7 +484,7 @@ impl Parser {
                                 ty: current_type.clone(),
                                 value: self.parse_constant_data(
                                     module,
-                                    &current_type,
+                                    current_type,
                                     record.fields,
                                 )?,
                             };

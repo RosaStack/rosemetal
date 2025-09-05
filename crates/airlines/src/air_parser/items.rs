@@ -42,7 +42,7 @@ pub struct TableString {
 #[derive(Debug, Default, Clone)]
 pub struct AirGlobalVariable {
     pub name: TableStringId,
-    pub ty: AirType,
+    pub type_id: AirTypeId,
     pub is_const: bool,
     pub initializer: AirConstantId,
     pub linkage: LinkageCode,
@@ -59,7 +59,7 @@ pub struct AirGlobalVariable {
 
 #[derive(Debug, Default, Clone)]
 pub struct AirConstant {
-    pub ty: AirType,
+    pub ty: AirTypeId,
     pub value: AirConstantValue,
 }
 
@@ -460,7 +460,7 @@ impl AirModule {
         });
 
         let name = TableStringId(self.string_table.len() as u64 - 1);
-        let ty = self.types[fields[2] as usize].clone();
+        let ty = AirTypeId(fields[2]);
         let is_const = fields[3] != 0;
 
         let initializer_id = fields[4];
@@ -486,7 +486,7 @@ impl AirModule {
 
         let result = AirGlobalVariable {
             name,
-            ty: ty.clone(),
+            type_id: ty.clone(),
             is_const,
             initializer: AirConstantId(initializer_id),
             linkage,
