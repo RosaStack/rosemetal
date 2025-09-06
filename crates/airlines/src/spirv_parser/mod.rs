@@ -5,10 +5,8 @@ use std::{collections::HashMap, u32};
 use anyhow::{Result, anyhow};
 pub use items::*;
 
-pub struct Parser {
-    pub position: i64,
-    pub signature: SpirVSignature,
-    pub content: Vec<u32>,
+#[derive(Default, Debug, Clone)]
+pub struct SpirVModule {
     pub operands: Vec<SpirVOp>,
     pub addressing_model: Option<SpirVAddressingModel>,
     pub memory_model: Option<SpirVMemoryModel>,
@@ -21,6 +19,13 @@ pub struct Parser {
     pub constant_composites_table: HashMap<SpirVVariableId, SpirVConstantComposite>,
     pub functions_table: HashMap<SpirVVariableId, SpirVFunction>,
     pub capabilities: Vec<SpirVCapability>,
+}
+
+pub struct Parser {
+    pub position: i64,
+    pub signature: SpirVSignature,
+    pub content: Vec<u32>,
+    pub module: SpirVModule,
 }
 
 impl Parser {
@@ -42,18 +47,7 @@ impl Parser {
                 }
                 result
             },
-            operands: vec![],
-            capabilities: vec![],
-            addressing_model: None,
-            memory_model: None,
-            name_table: HashMap::new(),
-            entry_point_table: HashMap::new(),
-            decorate_table: HashMap::new(),
-            constants_table: HashMap::new(),
-            constant_composites_table: HashMap::new(),
-            alloca_table: HashMap::new(),
-            functions_table: HashMap::new(),
-            type_table: HashMap::new(),
+            module: SpirVModule::default(),
         }
     }
 
@@ -208,67 +202,100 @@ impl Parser {
 
         Ok(match instruction {
             0 => {
-                Self::add_capability_to(SpirVCapability::Shader, &mut self.capabilities)?;
+                Self::add_capability_to(SpirVCapability::Shader, &mut self.module.capabilities)?;
                 SpirVExecutionModel::Vertex
             }
             1 => {
-                Self::add_capability_to(SpirVCapability::Tessellation, &mut self.capabilities)?;
+                Self::add_capability_to(
+                    SpirVCapability::Tessellation,
+                    &mut self.module.capabilities,
+                )?;
                 SpirVExecutionModel::TessellationControl
             }
             2 => {
-                Self::add_capability_to(SpirVCapability::Tessellation, &mut self.capabilities)?;
+                Self::add_capability_to(
+                    SpirVCapability::Tessellation,
+                    &mut self.module.capabilities,
+                )?;
                 SpirVExecutionModel::TessellationEvaluation
             }
             3 => {
-                Self::add_capability_to(SpirVCapability::Geometry, &mut self.capabilities)?;
+                Self::add_capability_to(SpirVCapability::Geometry, &mut self.module.capabilities)?;
                 SpirVExecutionModel::Geometry
             }
             4 => {
-                Self::add_capability_to(SpirVCapability::Shader, &mut self.capabilities)?;
+                Self::add_capability_to(SpirVCapability::Shader, &mut self.module.capabilities)?;
                 SpirVExecutionModel::Fragment
             }
             5 => {
-                Self::add_capability_to(SpirVCapability::Shader, &mut self.capabilities)?;
+                Self::add_capability_to(SpirVCapability::Shader, &mut self.module.capabilities)?;
                 SpirVExecutionModel::GLCompute
             }
             6 => {
-                Self::add_capability_to(SpirVCapability::Kernel, &mut self.capabilities)?;
+                Self::add_capability_to(SpirVCapability::Kernel, &mut self.module.capabilities)?;
                 SpirVExecutionModel::Kernel
             }
             5267 => {
-                Self::add_capability_to(SpirVCapability::MeshShadingNV, &mut self.capabilities)?;
+                Self::add_capability_to(
+                    SpirVCapability::MeshShadingNV,
+                    &mut self.module.capabilities,
+                )?;
                 SpirVExecutionModel::TaskNV
             }
             5268 => {
-                Self::add_capability_to(SpirVCapability::MeshShadingNV, &mut self.capabilities)?;
+                Self::add_capability_to(
+                    SpirVCapability::MeshShadingNV,
+                    &mut self.module.capabilities,
+                )?;
                 SpirVExecutionModel::MeshNV
             }
             5313 => {
-                Self::add_capability_to(SpirVCapability::RayTracingKHR, &mut self.capabilities)?;
+                Self::add_capability_to(
+                    SpirVCapability::RayTracingKHR,
+                    &mut self.module.capabilities,
+                )?;
                 SpirVExecutionModel::RayGenerationKHR
             }
             5314 => {
-                Self::add_capability_to(SpirVCapability::RayTracingKHR, &mut self.capabilities)?;
+                Self::add_capability_to(
+                    SpirVCapability::RayTracingKHR,
+                    &mut self.module.capabilities,
+                )?;
                 SpirVExecutionModel::IntersectionKHR
             }
             5315 => {
-                Self::add_capability_to(SpirVCapability::RayTracingKHR, &mut self.capabilities)?;
+                Self::add_capability_to(
+                    SpirVCapability::RayTracingKHR,
+                    &mut self.module.capabilities,
+                )?;
                 SpirVExecutionModel::AnyHitKHR
             }
             5316 => {
-                Self::add_capability_to(SpirVCapability::RayTracingKHR, &mut self.capabilities)?;
+                Self::add_capability_to(
+                    SpirVCapability::RayTracingKHR,
+                    &mut self.module.capabilities,
+                )?;
                 SpirVExecutionModel::MissKHR
             }
             5317 => {
-                Self::add_capability_to(SpirVCapability::RayTracingKHR, &mut self.capabilities)?;
+                Self::add_capability_to(
+                    SpirVCapability::RayTracingKHR,
+                    &mut self.module.capabilities,
+                )?;
                 SpirVExecutionModel::CallableKHR
             }
             5364 => {
-                Self::add_capability_to(SpirVCapability::MeshShadingEXT, &mut self.capabilities)?;
+                Self::add_capability_to(
+                    SpirVCapability::MeshShadingEXT,
+                    &mut self.module.capabilities,
+                )?;
                 SpirVExecutionModel::TaskEXT
             }
             5365 => {
-                Self::add_capability_to(SpirVCapability::MeshShadingEXT, &mut self.capabilities)?;
+                Self::add_capability_to(
+                    SpirVCapability::MeshShadingEXT,
+                    &mut self.module.capabilities,
+                )?;
                 SpirVExecutionModel::MeshEXT
             }
             _ => return Err(anyhow!("Invalid Execution Model ID.")),
@@ -321,7 +348,7 @@ impl Parser {
             SpirVOpCode::Name => {
                 let id = SpirVVariableId(self.advance()?);
                 let name = self.parse_literal()?.1;
-                self.name_table.insert(
+                self.module.name_table.insert(
                     id,
                     SpirVName {
                         name: name.clone(),
@@ -334,7 +361,8 @@ impl Parser {
                 let id = SpirVVariableId(self.advance()?);
                 let member_id = self.advance()? as usize;
                 let member_name = self.parse_literal()?.1;
-                let member_names_vec = &mut self.name_table.get_mut(&id).unwrap().member_names;
+                let member_names_vec =
+                    &mut self.module.name_table.get_mut(&id).unwrap().member_names;
 
                 if member_names_vec.len() <= member_id {
                     let difference = member_id - member_names_vec.len() + 1;
@@ -351,8 +379,8 @@ impl Parser {
             SpirVOpCode::MemoryModel => {
                 let addressing_model = self.parse_addressing_model()?;
                 let memory_model = self.parse_memory_model()?;
-                self.addressing_model = Some(addressing_model.clone());
-                self.memory_model = Some(memory_model.clone());
+                self.module.addressing_model = Some(addressing_model.clone());
+                self.module.memory_model = Some(memory_model.clone());
                 SpirVOp::MemoryModel(addressing_model, memory_model)
             }
             SpirVOpCode::EntryPoint => {
@@ -377,19 +405,20 @@ impl Parser {
                     arguments,
                 };
 
-                self.entry_point_table
+                self.module
+                    .entry_point_table
                     .insert(entry_point_id, entry_point.clone());
                 SpirVOp::EntryPoint(entry_point)
             }
             SpirVOpCode::Capability => {
                 let capability = self.parse_op_capability()?;
-                Self::add_capability_to(capability.clone(), &mut self.capabilities)?;
-                Self::update_implicit_capabilities(&mut self.capabilities)?;
+                Self::add_capability_to(capability.clone(), &mut self.module.capabilities)?;
+                Self::update_implicit_capabilities(&mut self.module.capabilities)?;
                 SpirVOp::Capability(capability)
             }
             SpirVOpCode::TypeVoid => {
                 let target_id = SpirVVariableId(self.advance()?);
-                self.type_table.insert(target_id, SpirVType::Void);
+                self.module.type_table.insert(target_id, SpirVType::Void);
 
                 SpirVOp::Type(target_id, SpirVType::Void)
             }
@@ -398,7 +427,8 @@ impl Parser {
                 let width = self.advance()?;
                 let is_signed = self.advance()? != 0;
 
-                self.type_table
+                self.module
+                    .type_table
                     .insert(target_id, SpirVType::Int(width, is_signed));
                 SpirVOp::Type(target_id, SpirVType::Int(width, is_signed))
             }
@@ -411,7 +441,9 @@ impl Parser {
                     todo!("Parsing the floating point encoding.");
                 }
 
-                self.type_table.insert(target_id, SpirVType::Float(width));
+                self.module
+                    .type_table
+                    .insert(target_id, SpirVType::Float(width));
                 SpirVOp::Type(target_id, SpirVType::Float(width))
             }
             SpirVOpCode::TypeVector => {
@@ -419,7 +451,8 @@ impl Parser {
                 let vector_type = SpirVVariableId(self.advance()?);
                 let size = self.advance()?;
 
-                self.type_table
+                self.module
+                    .type_table
                     .insert(target_id, SpirVType::Vector(vector_type, size));
 
                 SpirVOp::Type(target_id, SpirVType::Vector(vector_type, size))
@@ -429,7 +462,8 @@ impl Parser {
                 let array_type = SpirVVariableId(self.advance()?);
                 let length = self.advance()?;
 
-                self.type_table
+                self.module
+                    .type_table
                     .insert(target_id, SpirVType::Array(array_type, length));
 
                 SpirVOp::Type(target_id, SpirVType::Array(array_type, length))
@@ -439,7 +473,8 @@ impl Parser {
                 let storage_class = self.parse_storage_class()?;
                 let type_id = SpirVVariableId(self.advance()?);
 
-                self.type_table
+                self.module
+                    .type_table
                     .insert(target_id, SpirVType::Pointer(storage_class, type_id));
 
                 SpirVOp::Type(target_id, SpirVType::Pointer(storage_class, type_id))
@@ -448,7 +483,8 @@ impl Parser {
                 let target_id = SpirVVariableId(self.advance()?);
                 let type_id = SpirVVariableId(self.advance()?);
 
-                self.type_table
+                self.module
+                    .type_table
                     .insert(target_id, SpirVType::Function(type_id));
 
                 SpirVOp::Type(target_id, SpirVType::Function(type_id))
@@ -464,7 +500,7 @@ impl Parser {
                         values.push(self.advance()?.to_le_bytes());
                     }
 
-                    match self.type_table.get(&type_id) {
+                    match self.module.type_table.get(&type_id) {
                         Some(ty) => match ty {
                             SpirVType::Int(width, is_signed) => SpirVConstant {
                                 type_id,
@@ -571,7 +607,9 @@ impl Parser {
                     }
                 };
 
-                self.constants_table.insert(target_id, constant.clone());
+                self.module
+                    .constants_table
+                    .insert(target_id, constant.clone());
                 SpirVOp::Constant(target_id, constant)
             }
             SpirVOpCode::ConstantComposite => {
@@ -585,7 +623,8 @@ impl Parser {
 
                 let constant_composite = SpirVConstantComposite { type_id, values };
 
-                self.constant_composites_table
+                self.module
+                    .constant_composites_table
                     .insert(target_id, constant_composite.clone());
                 SpirVOp::ConstantComposite(target_id, constant_composite)
             }
@@ -593,7 +632,7 @@ impl Parser {
                 let type_id = SpirVVariableId(self.advance()?);
 
                 if !matches!(
-                    self.type_table.get(&type_id).unwrap(),
+                    self.module.type_table.get(&type_id).unwrap(),
                     SpirVType::Pointer(_, _)
                 ) {
                     return Err(anyhow!("Result Type must've be a Pointer Type."));
@@ -612,14 +651,14 @@ impl Parser {
                     initializer,
                 };
 
-                self.alloca_table.insert(target_id, alloca.clone());
+                self.module.alloca_table.insert(target_id, alloca.clone());
 
                 SpirVOp::Alloca(target_id, alloca)
             }
             SpirVOpCode::Decorate => {
                 let target_id = SpirVVariableId(self.advance()?);
                 let decorate = self.parse_decorate_type()?;
-                self.decorate_table.insert(
+                self.module.decorate_table.insert(
                     target_id,
                     SpirVDecorate {
                         ty: decorate.clone(),
@@ -634,6 +673,7 @@ impl Parser {
                 let member_id = self.advance()? as usize;
                 let member_decorate = self.parse_decorate_type()?;
                 let member_decorates_vec = &mut self
+                    .module
                     .decorate_table
                     .get_mut(&struct_id)
                     .unwrap()
@@ -659,7 +699,8 @@ impl Parser {
                     types.push(SpirVVariableId(self.advance()?));
                 }
 
-                self.type_table
+                self.module
+                    .type_table
                     .insert(target_id, SpirVType::Struct(types.clone()));
 
                 SpirVOp::Type(target_id, SpirVType::Struct(types))
@@ -687,7 +728,9 @@ impl Parser {
                     instructions,
                 };
 
-                self.functions_table.insert(result_id, function.clone());
+                self.module
+                    .functions_table
+                    .insert(result_id, function.clone());
 
                 SpirVOp::Function(result_id, function)
             }
@@ -820,23 +863,29 @@ impl Parser {
         let v = self.advance()?;
         Ok(match v {
             0 => {
-                Self::add_capability_to(SpirVCapability::Shader, &mut self.capabilities)?;
+                Self::add_capability_to(SpirVCapability::Shader, &mut self.module.capabilities)?;
                 SpirVBuiltIn::Position
             }
             1 => {
-                Self::add_capability_to(SpirVCapability::Shader, &mut self.capabilities)?;
+                Self::add_capability_to(SpirVCapability::Shader, &mut self.module.capabilities)?;
                 SpirVBuiltIn::PointSize
             }
             3 => {
-                Self::add_capability_to(SpirVCapability::ClipDistance, &mut self.capabilities)?;
+                Self::add_capability_to(
+                    SpirVCapability::ClipDistance,
+                    &mut self.module.capabilities,
+                )?;
                 SpirVBuiltIn::ClipDistance
             }
             4 => {
-                Self::add_capability_to(SpirVCapability::CullDistance, &mut self.capabilities)?;
+                Self::add_capability_to(
+                    SpirVCapability::CullDistance,
+                    &mut self.module.capabilities,
+                )?;
                 SpirVBuiltIn::CullDistance
             }
             42 => {
-                Self::add_capability_to(SpirVCapability::Shader, &mut self.capabilities)?;
+                Self::add_capability_to(SpirVCapability::Shader, &mut self.module.capabilities)?;
                 SpirVBuiltIn::VertexIndex
             }
             _ => todo!(),
@@ -848,7 +897,7 @@ impl Parser {
 
         Ok(match v {
             2 => {
-                Self::add_capability_to(SpirVCapability::Shader, &mut self.capabilities)?;
+                Self::add_capability_to(SpirVCapability::Shader, &mut self.module.capabilities)?;
                 SpirVDecorateType::Block
             }
             11 => SpirVDecorateType::BuiltIn(self.parse_built_in()?),
@@ -966,16 +1015,16 @@ impl Parser {
         Ok(())
     }
 
-    pub fn start(&mut self) -> Result<()> {
+    pub fn start(&mut self) -> Result<SpirVModule> {
         self.signature = self.get_signature()?;
 
         let mut pos = self.position as usize;
         while pos < self.content.len() - 1 {
             let op = self.parse_op()?;
-            self.operands.push(op);
+            self.module.operands.push(op);
             pos = self.position as usize;
         }
 
-        Ok(())
+        Ok(self.module.clone())
     }
 }

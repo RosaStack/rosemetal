@@ -1,16 +1,16 @@
 pub mod air_builder;
+pub mod air_codegen;
 pub mod air_parser;
 pub mod llvm_bitcode;
+pub mod spirv_builder;
+pub mod spirv_codegen;
 pub mod spirv_parser;
 
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
 
-    use crate::{
-        air_builder::AirBuilder,
-        air_parser::{AirArrayType, AirConstant, AirConstantValue, AirFunctionType, AirType},
-    };
+    use crate::spirv_codegen::air::SpirVToAir;
 
     use super::llvm_bitcode::*;
 
@@ -18,9 +18,7 @@ mod tests {
     fn spirv_parser() -> Result<()> {
         let mut parser = super::spirv_parser::Parser::new(std::fs::read("test-files/test.spv")?);
 
-        parser.start()?;
-
-        dbg!(&parser.operands);
+        dbg!(parser.start()?);
 
         Ok(())
     }
@@ -35,38 +33,11 @@ mod tests {
     }
 
     #[test]
-    fn air_builder() -> Result<()> {
-        let mut builder = AirBuilder::new();
+    fn spirv_to_air() -> Result<()> {
+        let mut input = super::spirv_parser::Parser::new(std::fs::read("test-files/test.spv")?);
 
-        builder.identification("Airlines Testing.");
-
-        builder.begin_apple_shader_module("test.metal")?;
-
-        let float = builder.new_type(AirType::Float)?;
-        let _float_array = builder.new_type(AirType::Array(AirArrayType {
-            size: 3,
-            element_type: float,
-        }));
-
-        let float_const = builder.new_constant(AirConstant {
-            ty: float,
-            value: AirConstantValue::Float32(0_f32),
-        })?;
-
-        let value_one = builder.new_global_variable("first_variable", float, float_const)?;
-        let value_two = builder.new_global_variable("second_variable", float, float_const)?;
-
-        let function_signature = builder.new_function_signature(
-            "main",
-            AirFunctionType {
-                vararg: 0,
-                return_type: float,
-                params: vec![float],
-            },
-        )?;
-        // let function = builder.new_function(function_signature, &[]);
-
-        dbg!(builder.file);
+        let mut conversion = SpirVToAir::new(input.start()?)?;
+        conversion.start()?;
 
         Ok(())
     }
