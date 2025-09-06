@@ -7,6 +7,7 @@ pub use items::*;
 
 #[derive(Default, Debug, Clone)]
 pub struct SpirVModule {
+    pub signature: SpirVSignature,
     pub operands: Vec<SpirVOp>,
     pub addressing_model: Option<SpirVAddressingModel>,
     pub memory_model: Option<SpirVMemoryModel>,
@@ -23,7 +24,6 @@ pub struct SpirVModule {
 
 pub struct Parser {
     pub position: i64,
-    pub signature: SpirVSignature,
     pub content: Vec<u32>,
     pub module: SpirVModule,
 }
@@ -32,7 +32,6 @@ impl Parser {
     pub fn new(content: Vec<u8>) -> Self {
         Self {
             position: -1,
-            signature: SpirVSignature::default(),
             content: {
                 let mut result: Vec<u32> = vec![0; content.len() / 4];
                 let mut count = 0;
@@ -483,11 +482,16 @@ impl Parser {
                 let target_id = SpirVVariableId(self.advance()?);
                 let type_id = SpirVVariableId(self.advance()?);
 
+                let mut args = vec![];
+                for _i in 0..word_count - 3 {
+                    args.push(SpirVVariableId(self.advance()?));
+                }
+
                 self.module
                     .type_table
-                    .insert(target_id, SpirVType::Function(type_id));
+                    .insert(target_id, SpirVType::Function(type_id, args.clone()));
 
-                SpirVOp::Type(target_id, SpirVType::Function(type_id))
+                SpirVOp::Type(target_id, SpirVType::Function(type_id, args))
             }
             SpirVOpCode::Constant => {
                 let type_id = SpirVVariableId(self.advance()?);
@@ -1016,7 +1020,7 @@ impl Parser {
     }
 
     pub fn start(&mut self) -> Result<SpirVModule> {
-        self.signature = self.get_signature()?;
+        self.module.signature = self.get_signature()?;
 
         let mut pos = self.position as usize;
         while pos < self.content.len() - 1 {

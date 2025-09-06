@@ -14,11 +14,11 @@ pub struct SpirVToAir {
 }
 
 impl SpirVToAir {
-    pub fn new(input: SpirVModule) -> Result<Self> {
-        Ok(Self {
+    pub fn new(input: SpirVModule) -> Self {
+        Self {
             input,
             output: AirBuilder::new(),
-        })
+        }
     }
 
     pub fn start(&mut self) -> Result<()> {
@@ -68,11 +68,14 @@ impl SpirVToAir {
                     SpirVType::Pointer(_, type_id) => self
                         .output
                         .new_type(AirType::Pointer(0, *types.get(type_id).unwrap()))?,
-                    SpirVType::Function(id) => {
+                    SpirVType::Function(id, args) => {
                         self.output.new_type(AirType::Function(AirFunctionType {
                             vararg: 0,
                             return_type: *types.get(id).unwrap(),
-                            params: vec![],
+                            params: args
+                                .iter()
+                                .map(|arg| *types.get(arg).unwrap())
+                                .collect::<Vec<_>>(),
                         }))?
                     }
                     SpirVType::Struct(variables) => {

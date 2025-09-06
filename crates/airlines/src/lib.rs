@@ -10,7 +10,7 @@ pub mod spirv_parser;
 mod tests {
     use anyhow::Result;
 
-    use crate::spirv_codegen::air::SpirVToAir;
+    use crate::{air_codegen::AirToSpirV, spirv_codegen::air::SpirVToAir};
 
     use super::llvm_bitcode::*;
 
@@ -36,7 +36,17 @@ mod tests {
     fn spirv_to_air() -> Result<()> {
         let mut input = super::spirv_parser::Parser::new(std::fs::read("test-files/test.spv")?);
 
-        let mut conversion = SpirVToAir::new(input.start()?)?;
+        let mut conversion = SpirVToAir::new(input.start()?);
+        conversion.start()?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn air_to_spirv() -> Result<()> {
+        let mut input = super::air_parser::Parser::new(std::fs::read("test-files/test.air")?)?;
+
+        let mut conversion = AirToSpirV::new(input.start()?);
         conversion.start()?;
 
         Ok(())

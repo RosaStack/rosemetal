@@ -119,7 +119,7 @@ pub struct SpirVBlock {
 pub enum SpirVType {
     #[default]
     Void,
-    Function(SpirVVariableId),
+    Function(SpirVVariableId, Vec<SpirVVariableId>),
     Float(u32),
     Int(u32, bool),
     Vector(SpirVVariableId, u32),

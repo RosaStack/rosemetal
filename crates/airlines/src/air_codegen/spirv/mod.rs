@@ -2,7 +2,8 @@ use anyhow::{Result, anyhow};
 
 use crate::{
     air_parser::{AirFile, AirItem, AirModule},
-    spirv_parser::{self, SpirVOp},
+    spirv_builder::SpirVBuilder,
+    spirv_parser::{self, SpirVCapability, SpirVOp},
 };
 
 pub struct AirToSpirV {
@@ -33,6 +34,10 @@ impl AirToSpirV {
         }
 
         let mut module = module.unwrap();
+        let mut builder = SpirVBuilder::new();
+
+        builder.set_version(1, 0);
+        builder.add_capability(SpirVCapability::Shader);
 
         Ok(())
     }
