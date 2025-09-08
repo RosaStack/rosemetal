@@ -115,7 +115,7 @@ pub struct SpirVBlock {
     pub instructions: Vec<SpirVOp>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub enum SpirVType {
     #[default]
     Void,
@@ -135,7 +135,7 @@ pub struct SpirVAlloca {
     pub initializer: Option<SpirVVariableId>,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum SpirVStorageClass {
     #[default]
     UniformConstant,
@@ -173,6 +173,7 @@ pub enum SpirVConstantValue {
     UnsignedInteger(u64),
     Float32(f32),
     Float64(f64),
+    Null,
 }
 
 #[derive(Debug, Default, Clone)]
