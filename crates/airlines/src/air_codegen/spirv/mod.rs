@@ -4,8 +4,8 @@ use anyhow::{Result, anyhow};
 
 use crate::{
     air_parser::{
-        AirConstant, AirConstantId, AirConstantValue, AirFile, AirGlobalVariableId, AirItem,
-        AirModule, AirType, AirTypeId,
+        AirConstant, AirConstantId, AirConstantValue, AirFile, AirFunctionSignatureId,
+        AirGlobalVariableId, AirItem, AirModule, AirType, AirTypeId,
     },
     spirv_builder::SpirVBuilder,
     spirv_parser::{
@@ -118,13 +118,24 @@ impl AirToSpirV {
                 let values = elements
                     .iter()
                     .map(|value| {
-                        Self::parse_air_constant(
-                            builder,
-                            module,
-                            type_id,
-                            Some(module.constants.get(value).unwrap().clone()),
-                            None,
-                        )
+                        dbg!(&module.constants);
+                        dbg!(value);
+                        match module.constants.get(value) {
+                            Some(value) => Self::parse_air_constant(
+                                builder,
+                                module,
+                                type_id,
+                                Some(value.clone()),
+                                None,
+                            ),
+                            None => Self::parse_air_constant(
+                                builder,
+                                module,
+                                type_id,
+                                None,
+                                Some(AirConstantValue::Poison),
+                            ),
+                        }
                     })
                     .collect();
 
@@ -176,6 +187,8 @@ impl AirToSpirV {
                 ),
             );
         }
+
+        let mut functions: HashMap<AirFunctionSignatureId, SpirVVariableId> = HashMap::new();
 
         todo!("{:#?}", builder.module);
 

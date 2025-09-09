@@ -153,19 +153,19 @@ pub enum SpirVStorageClass {
     StorageBuffer,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct SpirVConstant {
     pub type_id: SpirVVariableId,
     pub value: SpirVConstantValue,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct SpirVConstantComposite {
     pub type_id: SpirVVariableId,
     pub values: Vec<SpirVVariableId>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub enum SpirVConstantValue {
     #[default]
     Undefined,
@@ -235,7 +235,7 @@ pub enum SpirVBuiltIn {
     VertexIndex,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct SpirVName {
     pub name: String,
     pub member_names: Vec<String>,

@@ -118,6 +118,16 @@ impl SpirVBuilder {
             member_names: names_ty,
         };
 
+        let final_struct_ty = SpirVType::Struct(elements_ty);
+
+        for (id, table_ty) in &self.module.type_table {
+            if table_ty == &final_struct_ty {
+                if *self.module.name_table.get(id).unwrap() == spirv_name {
+                    return *id;
+                }
+            }
+        }
+
         self.module.name_table.insert(var, spirv_name.clone());
 
         self.module
@@ -132,9 +142,7 @@ impl SpirVBuilder {
             count += 1;
         }
 
-        self.module
-            .type_table
-            .insert(var, SpirVType::Struct(elements_ty));
+        self.module.type_table.insert(var, final_struct_ty);
 
         self.current_variable_id += 1;
 
@@ -143,6 +151,12 @@ impl SpirVBuilder {
 
     pub fn new_constant(&mut self, constant: SpirVConstant) -> SpirVVariableId {
         let var = SpirVVariableId(self.current_variable_id);
+
+        for (id, c) in &self.module.constants_table {
+            if c == &constant {
+                return *id;
+            }
+        }
 
         self.module.constants_table.insert(var, constant.clone());
 
@@ -155,6 +169,12 @@ impl SpirVBuilder {
 
     pub fn new_constant_composite(&mut self, composite: SpirVConstantComposite) -> SpirVVariableId {
         let var = SpirVVariableId(self.current_variable_id);
+
+        for (id, c) in &self.module.constant_composites_table {
+            if c == &composite {
+                return *id;
+            }
+        }
 
         self.module
             .constant_composites_table
