@@ -4,14 +4,15 @@ use anyhow::{Result, anyhow};
 
 use crate::{
     air_parser::{
-        AirConstant, AirConstantId, AirConstantValue, AirFile, AirFunctionSignatureId,
-        AirGlobalVariableId, AirItem, AirModule, AirType, AirTypeId,
+        AirConstant, AirConstantId, AirConstantValue, AirFile, AirFunctionSignature,
+        AirFunctionSignatureId, AirGlobalVariableId, AirItem, AirMetadataConstant,
+        AirMetadataNamedNode, AirModule, AirType, AirTypeId, AirValue,
     },
     spirv_builder::SpirVBuilder,
     spirv_parser::{
         SpirVAddressingModel, SpirVCapability, SpirVConstant, SpirVConstantComposite,
-        SpirVConstantValue, SpirVMemoryModel, SpirVOp, SpirVStorageClass, SpirVType,
-        SpirVVariableId,
+        SpirVConstantValue, SpirVEntryPoint, SpirVMemoryModel, SpirVOp, SpirVStorageClass,
+        SpirVType, SpirVVariableId,
     },
 };
 
@@ -117,25 +118,21 @@ impl AirToSpirV {
             AirConstantValue::Aggregate(elements) => {
                 let values = elements
                     .iter()
-                    .map(|value| {
-                        dbg!(&module.constants);
-                        dbg!(value);
-                        match module.constants.get(value) {
-                            Some(value) => Self::parse_air_constant(
-                                builder,
-                                module,
-                                type_id,
-                                Some(value.clone()),
-                                None,
-                            ),
-                            None => Self::parse_air_constant(
-                                builder,
-                                module,
-                                type_id,
-                                None,
-                                Some(AirConstantValue::Poison),
-                            ),
-                        }
+                    .map(|value| match module.constants.get(value) {
+                        Some(value) => Self::parse_air_constant(
+                            builder,
+                            module,
+                            type_id,
+                            Some(value.clone()),
+                            None,
+                        ),
+                        None => Self::parse_air_constant(
+                            builder,
+                            module,
+                            type_id,
+                            None,
+                            Some(AirConstantValue::Poison),
+                        ),
                     })
                     .collect();
 
@@ -188,10 +185,136 @@ impl AirToSpirV {
             );
         }
 
-        let mut functions: HashMap<AirFunctionSignatureId, SpirVVariableId> = HashMap::new();
+        let mut entry_points: HashMap<AirFunctionSignatureId, SpirVVariableId> = HashMap::new();
+        let mut air_vertex: Option<AirMetadataNamedNode> = None;
+
+        for i in &module.metadata_named_nodes {
+            if i.name == "air.vertex" {
+                air_vertex = Some(i.clone());
+            }
+        }
+
+        match air_vertex {
+            Some(air_vertex) => {
+                for i in air_vertex.operands {
+                    let entry = match &module.metadata_constants[&i] {
+                        AirMetadataConstant::Node(entry) => entry,
+                        _ => panic!("Expected Node, found {:?}", module.metadata_constants[&i]),
+                    };
+
+                    let function_signature = match module.metadata_constants.get(&entry[0]).unwrap()
+                    {
+                        AirMetadataConstant::Value(value) => match value {
+                            AirValue::Function(function) => {
+                                module.get_function_signature(*function).unwrap()
+                            }
+                            _ => panic!("Expected Function, found {:?}", value),
+                        },
+                        _ => {
+                            panic!(
+                                "Expected Value, found {:?}",
+                                module.metadata_constants[&entry[0]]
+                            )
+                        }
+                    };
+
+                    let entry_point_values = match module.metadata_constants.get(&entry[1]).unwrap()
+                    {
+                        AirMetadataConstant::Node(entry_point_values) => entry_point_values,
+                        _ => {
+                            panic!(
+                                "Expected Node Group, found {:?}",
+                                module.metadata_constants[&entry[1]]
+                            )
+                        }
+                    };
+
+                    let entry_point_vertex_id =
+                        match module.metadata_constants.get(&entry[2]).unwrap() {
+                            AirMetadataConstant::Node(entry_point_vertex_id) => {
+                                entry_point_vertex_id
+                            }
+                            _ => {
+                                panic!(
+                                    "Expected Node Group, found {:?}",
+                                    module.metadata_constants[&entry[1]]
+                                )
+                            }
+                        };
+
+                    let vertex_info = Self::parse_vertex_info(
+                        &module,
+                        entry_point_values.clone(),
+                        entry_point_vertex_id.clone(),
+                    );
+                }
+            }
+            None => {}
+        }
 
         todo!("{:#?}", builder.module);
 
         Ok(())
     }
+
+    pub fn parse_vertex_info(
+        module: &AirModule,
+        vertex_values_info: Vec<u64>,
+        vertex_id_info: Vec<u64>,
+    ) -> VertexFunctionInfo {
+        let mut vertex_outputs: Vec<VertexOutput> = vec![];
+        for i in vertex_values_info {
+            let vertex_properties = match module.metadata_constants.get(&i).unwrap() {
+                AirMetadataConstant::Node(vertex_properties) => vertex_properties,
+                _ => {
+                    panic!(
+                        "Expected Node Group, found {:?}",
+                        module.metadata_constants[&i]
+                    )
+                }
+            };
+
+            let mut count = 0;
+            loop {
+                let variable_name = module
+                    .get_metadata_string(vertex_properties[count])
+                    .unwrap();
+
+                match variable_name.as_str() {
+                    "air.vertex_output" => {
+                        let mut vertex_output = VertexOutput::default();
+                        count += 1;
+                        let user_location_string = module
+                            .get_metadata_string(vertex_properties[count])
+                            .unwrap();
+
+                        let start_location_num =
+                            user_location_string.find("user(locn").unwrap() + "user(locn".len();
+                        let end_location_num = user_location_string.find(")").unwrap();
+                        let user_location_string =
+                            &user_location_string[start_location_num..end_location_num].to_string();
+
+                        vertex_output.location = user_location_string.parse::<u64>().unwrap();
+                    }
+                    _ => todo!(),
+                }
+
+                count += 1;
+            }
+        }
+
+        todo!()
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct VertexOutput {
+    pub name: String,
+    pub ty: String,
+    pub location: u64,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct VertexFunctionInfo {
+    pub vertex_outputs: Vec<VertexOutput>,
 }

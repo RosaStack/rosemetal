@@ -656,32 +656,49 @@ impl Parser {
     pub fn parse_metadata_block(&mut self, result: &mut AirModule) -> Result<()> {
         let mut content = self.bitstream.next();
         let mut current_name = String::new();
+        let mut next_metadata_no = result.metadata_constants.len() as u64;
         loop {
             match content {
                 Some(content) => match content? {
                     StreamEntry::EndBlock | StreamEntry::EndOfStream => return Ok(()),
                     StreamEntry::Record(record) => match MetadataCodes::from_u64(record.code) {
                         MetadataCodes::STRINGS => {
-                            result.metadata_strings = Self::parse_metadata_strings(record.fields)?
+                            let strings = Self::parse_metadata_strings(record.fields)?;
+                            for i in strings {
+                                result.metadata_constants.insert(
+                                    next_metadata_no,
+                                    AirMetadataConstant::String(i.clone()),
+                                );
+                                next_metadata_no += 1;
+                            }
                         }
-                        MetadataCodes::INDEX_OFFSET => result
-                            .undiscovered_data
-                            .push(UndiscoveredData::INDEX_OFFSET(record.fields[0])),
+                        MetadataCodes::INDEX_OFFSET => {
+                            result
+                                .undiscovered_data
+                                .push(UndiscoveredData::INDEX_OFFSET(record.fields[0]));
+                        }
                         MetadataCodes::VALUE => {
                             let ty = AirTypeId(record.fields[0]);
                             let constant = AirMetadataConstant::Value(
-                                Self::parse_constant_value_with_type(result, ty, record.fields[1]),
+                                result.value_list[record.fields[1] as usize].clone(),
                             );
-                            let _ = result
-                                .metadata_constants
-                                .insert(result.metadata_constants.len() as u64 + 1, constant);
+                            let _ = result.metadata_constants.insert(next_metadata_no, constant);
+                            next_metadata_no += 1;
                         }
-                        MetadataCodes::NODE | MetadataCodes::NAMED_NODE => {
+                        MetadataCodes::NODE => {
                             let _ = result.metadata_constants.insert(
-                                result.metadata_constants.len() as u64 + 1,
-                                AirMetadataConstant::Node(current_name.clone(), record.fields),
+                                next_metadata_no,
+                                AirMetadataConstant::Node(
+                                    record.fields.iter().map(|x| x - 1).collect(),
+                                ),
                             );
-                            current_name.clear();
+                            next_metadata_no += 1;
+                        }
+                        MetadataCodes::NAMED_NODE => {
+                            result.metadata_named_nodes.push(AirMetadataNamedNode {
+                                name: current_name.clone(),
+                                operands: record.fields,
+                            })
                         }
                         MetadataCodes::INDEX => {
                             // Skip. We don't need this data (for now).

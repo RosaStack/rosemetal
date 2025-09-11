@@ -316,9 +316,10 @@ pub struct AirMetadataKind {
 pub enum AirMetadataConstant {
     #[default]
     None,
-    Value(AirConstantValue),
+    Value(AirValue),
     Pointer(u64),
-    Node(String, Vec<u64>),
+    Node(Vec<u64>),
+    String(String),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -410,6 +411,12 @@ pub struct AirValueId(pub u64);
 pub struct AirTypeId(pub u64);
 
 #[derive(Debug, Default, Clone)]
+pub struct AirMetadataNamedNode {
+    pub name: String,
+    pub operands: Vec<u64>,
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct AirModule {
     pub version: u64,
     pub use_relative_ids: bool,
@@ -429,14 +436,34 @@ pub struct AirModule {
     pub value_list: Vec<AirValue>,
     pub undiscovered_data: Vec<UndiscoveredData>,
     pub metadata_kind_table: HashMap<u64, AirMetadataKind>,
-    pub metadata_strings: Vec<String>,
     pub metadata_constants: HashMap<u64, AirMetadataConstant>,
+    pub metadata_named_nodes: Vec<AirMetadataNamedNode>,
     pub operand_bundle_tags: Vec<String>,
     pub sync_scope_names: Vec<String>,
     pub max_global_id: u64,
 }
 
 impl AirModule {
+    pub fn get_metadata_string(&self, id: u64) -> Option<String> {
+        match self.metadata_constants.get(&id).unwrap() {
+            AirMetadataConstant::String(string) => Some(string.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn get_function_signature(
+        &self,
+        id: AirFunctionSignatureId,
+    ) -> Option<&AirFunctionSignature> {
+        for i in &self.function_signatures {
+            if i.global_id == id {
+                return Some(i);
+            }
+        }
+
+        None
+    }
+
     pub fn assign_value_to_value_list(&mut self, id: usize, value: AirValue) {
         match self.value_list.get_mut(id) {
             Some(s) => *s = value,
