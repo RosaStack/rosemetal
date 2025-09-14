@@ -1,7 +1,7 @@
 use crate::spirv_parser::{
     SpirVAddressingModel, SpirVAlloca, SpirVCapability, SpirVConstant, SpirVConstantComposite,
-    SpirVMemoryModel, SpirVModule, SpirVName, SpirVOp, SpirVStorageClass, SpirVType,
-    SpirVVariableId,
+    SpirVEntryPoint, SpirVExecutionModel, SpirVMemoryModel, SpirVModule, SpirVName, SpirVOp,
+    SpirVStorageClass, SpirVType, SpirVVariableId,
 };
 
 pub struct SpirVBuilder {
@@ -55,6 +55,33 @@ impl SpirVBuilder {
 
         self.module.type_table.insert(var, ty.clone());
         self.module.operands.push(SpirVOp::Type(var, ty));
+
+        self.current_variable_id += 1;
+
+        var
+    }
+
+    pub fn new_entry_point(
+        &mut self,
+        name: &str,
+        function_id: SpirVVariableId,
+        execution_model: SpirVExecutionModel,
+        arguments: Vec<SpirVVariableId>,
+    ) -> SpirVVariableId {
+        let var = SpirVVariableId(self.current_variable_id);
+
+        let entry_point = SpirVEntryPoint {
+            name: name.to_string(),
+            execution_model,
+            entry_point_id: function_id,
+            arguments,
+        };
+
+        self.module
+            .entry_point_table
+            .insert(var, entry_point.clone());
+
+        self.module.operands.push(SpirVOp::EntryPoint(entry_point));
 
         self.current_variable_id += 1;
 

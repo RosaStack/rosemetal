@@ -1,18 +1,18 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, default};
 
 use anyhow::{Result, anyhow};
 
 use crate::{
     air_parser::{
         AirConstant, AirConstantId, AirConstantValue, AirFile, AirFunctionSignature,
-        AirFunctionSignatureId, AirGlobalVariableId, AirItem, AirMetadataConstant,
+        AirFunctionSignatureId, AirFunctionType, AirGlobalVariableId, AirItem, AirMetadataConstant,
         AirMetadataNamedNode, AirModule, AirType, AirTypeId, AirValue,
     },
     spirv_builder::SpirVBuilder,
     spirv_parser::{
         SpirVAddressingModel, SpirVCapability, SpirVConstant, SpirVConstantComposite,
-        SpirVConstantValue, SpirVEntryPoint, SpirVMemoryModel, SpirVOp, SpirVStorageClass,
-        SpirVType, SpirVVariableId,
+        SpirVConstantValue, SpirVEntryPoint, SpirVExecutionModel, SpirVMemoryModel, SpirVOp,
+        SpirVStorageClass, SpirVType, SpirVVariableId,
     },
 };
 
@@ -32,18 +32,22 @@ impl AirToSpirV {
     pub fn parse_air_type(
         builder: &mut SpirVBuilder,
         module: &AirModule,
-        id: AirTypeId,
+        value: &AirType,
     ) -> SpirVVariableId {
-        match &module.types[id.0 as usize] {
+        match value {
             AirType::Void => builder.new_type(SpirVType::Void),
             AirType::Integer(width) => builder.new_type(SpirVType::Int(*width as u32, false)),
             AirType::Float => builder.new_type(SpirVType::Float(32)),
             AirType::Function(function_ty) => {
-                let return_ty = Self::parse_air_type(builder, module, function_ty.return_type);
+                let return_ty = Self::parse_air_type(
+                    builder,
+                    module,
+                    &module.types[function_ty.return_type.0 as usize],
+                );
                 let args = function_ty
                     .params
                     .iter()
-                    .map(|ty| Self::parse_air_type(builder, module, *ty))
+                    .map(|ty| Self::parse_air_type(builder, module, &module.types[ty.0 as usize]))
                     .collect::<Vec<_>>();
 
                 builder.new_type(SpirVType::Function(return_ty, args))
@@ -52,20 +56,33 @@ impl AirToSpirV {
                 let elements = struct_ty
                     .elements
                     .iter()
-                    .map(|ty| (String::new(), Self::parse_air_type(builder, module, *ty)))
+                    .map(|ty| {
+                        (
+                            String::new(),
+                            Self::parse_air_type(builder, module, &module.types[ty.0 as usize]),
+                        )
+                    })
                     .collect::<Vec<_>>();
 
                 builder.new_struct_type(&struct_ty.name, struct_ty.name.is_empty(), elements)
             }
             AirType::Array(array_ty) => {
-                let element_ty = Self::parse_air_type(builder, module, array_ty.element_type);
+                let element_ty = Self::parse_air_type(
+                    builder,
+                    module,
+                    &module.types[array_ty.element_type.0 as usize],
+                );
                 builder.new_type(SpirVType::Array(element_ty, array_ty.size as u32))
             }
             AirType::Vector(vector_ty) => {
-                let element_ty = Self::parse_air_type(builder, module, vector_ty.element_type);
+                let element_ty = Self::parse_air_type(
+                    builder,
+                    module,
+                    &module.types[vector_ty.element_type.0 as usize],
+                );
                 builder.new_type(SpirVType::Vector(element_ty, vector_ty.size as u32))
             }
-            _ => todo!("{:?}", &module.types[id.0 as usize]),
+            _ => todo!("{:?}", value),
         }
     }
 
@@ -156,7 +173,7 @@ impl AirToSpirV {
             return Err(anyhow!("Module not found."));
         }
 
-        let mut module = module.unwrap();
+        let module = module.unwrap();
         let mut builder = SpirVBuilder::new();
 
         builder.set_version(1, 0);
@@ -165,7 +182,8 @@ impl AirToSpirV {
 
         let mut constants: HashMap<AirConstantId, SpirVVariableId> = HashMap::new();
         for (id, constant) in &module.constants {
-            let ty = Self::parse_air_type(&mut builder, &module, constant.ty);
+            let ty =
+                Self::parse_air_type(&mut builder, &module, &module.types[constant.ty.0 as usize]);
             let constant =
                 Self::parse_air_constant(&mut builder, &module, ty, Some(constant.clone()), None);
             constants.insert(*id, constant);
@@ -173,7 +191,11 @@ impl AirToSpirV {
 
         let mut global_variables: HashMap<AirGlobalVariableId, SpirVVariableId> = HashMap::new();
         for (id, global_var) in &module.global_variables {
-            let ty = Self::parse_air_type(&mut builder, &module, global_var.type_id);
+            let ty = Self::parse_air_type(
+                &mut builder,
+                &module,
+                &module.types[global_var.type_id.0 as usize],
+            );
             global_variables.insert(
                 *id,
                 builder.new_variable(
@@ -247,6 +269,22 @@ impl AirToSpirV {
                         entry_point_values.clone(),
                         entry_point_vertex_id.clone(),
                     );
+
+                    let air_function_type = Self::parse_air_type(
+                        &mut builder,
+                        &module,
+                        &AirType::Function(function_signature.ty.clone()),
+                    );
+
+                    match &builder.module.type_table[&air_function_type] {
+                        SpirVType::Function(output, inputs) => {
+                            let output = &builder.module.type_table[output];
+                        }
+                        _ => panic!(
+                            "Expected Function, found {:?}",
+                            &builder.module.type_table[&air_function_type]
+                        ),
+                    }
                 }
             }
             None => {}
@@ -257,12 +295,56 @@ impl AirToSpirV {
         Ok(())
     }
 
+    pub fn parse_metadata_value(
+        properties: &Vec<u64>,
+        module: &AirModule,
+        user_location: &mut Option<u64>,
+        value_name: &mut String,
+    ) {
+        let mut count = 1;
+
+        loop {
+            if count >= properties.len() {
+                break;
+            }
+
+            let variable_string = module.get_metadata_string(properties[count]).unwrap();
+
+            if variable_string.contains("user(locn") {
+                let start_location_num =
+                    variable_string.find("user(locn").unwrap() + "user(locn".len();
+                let end_location_num = variable_string.find(")").unwrap();
+                let user_location_string =
+                    &variable_string[start_location_num..end_location_num].to_string();
+
+                *user_location = Some(user_location_string.parse::<u64>().unwrap());
+            } else {
+                match variable_string.as_str() {
+                    "air.arg_type_name" => {
+                        // Skip, since we already have the AIR/LLVM Type.
+                        // There's no need to do string parsing or anything of the sort.
+                        count += 1;
+                    }
+                    "air.arg_name" => {
+                        count += 1;
+                        *value_name = module.get_metadata_string(properties[count]).unwrap();
+                    }
+                    _ => {
+                        todo!()
+                    }
+                }
+            }
+
+            count += 1;
+        }
+    }
+
     pub fn parse_vertex_info(
         module: &AirModule,
         vertex_values_info: Vec<u64>,
         vertex_id_info: Vec<u64>,
     ) -> VertexFunctionInfo {
-        let mut vertex_outputs: Vec<VertexOutput> = vec![];
+        let mut outputs: Vec<ShaderOutput> = vec![];
         for i in vertex_values_info {
             let vertex_properties = match module.metadata_constants.get(&i).unwrap() {
                 AirMetadataConstant::Node(vertex_properties) => vertex_properties,
@@ -274,47 +356,49 @@ impl AirToSpirV {
                 }
             };
 
-            let mut count = 0;
-            loop {
-                let variable_name = module
-                    .get_metadata_string(vertex_properties[count])
-                    .unwrap();
+            let variable_name = module.get_metadata_string(vertex_properties[0]).unwrap();
 
-                match variable_name.as_str() {
-                    "air.vertex_output" => {
-                        let mut vertex_output = VertexOutput::default();
-                        count += 1;
-                        let user_location_string = module
-                            .get_metadata_string(vertex_properties[count])
-                            .unwrap();
-
-                        let start_location_num =
-                            user_location_string.find("user(locn").unwrap() + "user(locn".len();
-                        let end_location_num = user_location_string.find(")").unwrap();
-                        let user_location_string =
-                            &user_location_string[start_location_num..end_location_num].to_string();
-
-                        vertex_output.location = user_location_string.parse::<u64>().unwrap();
-                    }
-                    _ => todo!(),
-                }
-
-                count += 1;
+            let mut vertex_output = ShaderOutput::default();
+            match variable_name.as_str() {
+                "air.vertex_output" => vertex_output.ty = ShaderOutputType::VertexOutput,
+                "air.position" => vertex_output.ty = ShaderOutputType::Position,
+                _ => todo!("{:?}", variable_name),
             }
+
+            Self::parse_metadata_value(
+                vertex_properties,
+                module,
+                &mut vertex_output.location,
+                &mut vertex_output.name,
+            );
+            outputs.push(vertex_output);
         }
 
-        todo!()
+        VertexFunctionInfo { outputs }
     }
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct VertexOutput {
+pub struct ShaderOutput {
+    pub ty: ShaderOutputType,
     pub name: String,
-    pub ty: String,
-    pub location: u64,
+    pub location: Option<u64>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub enum ShaderOutputType {
+    #[default]
+    VertexOutput,
+    Position,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct PositionOutput {
+    pub name: String,
+    pub type_id: SpirVVariableId,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct VertexFunctionInfo {
-    pub vertex_outputs: Vec<VertexOutput>,
+    pub outputs: Vec<ShaderOutput>,
 }
