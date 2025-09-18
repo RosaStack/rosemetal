@@ -1,4 +1,4 @@
-use std::{collections::HashMap, default};
+use std::{collections::HashMap, default, hash::Hash};
 
 use anyhow::{Result, anyhow};
 
@@ -10,9 +10,9 @@ use crate::{
     },
     spirv_builder::SpirVBuilder,
     spirv_parser::{
-        SpirVAddressingModel, SpirVCapability, SpirVConstant, SpirVConstantComposite,
-        SpirVConstantValue, SpirVEntryPoint, SpirVExecutionModel, SpirVMemoryModel, SpirVOp,
-        SpirVStorageClass, SpirVType, SpirVVariableId,
+        SpirVAddressingModel, SpirVBuiltIn, SpirVCapability, SpirVConstant, SpirVConstantComposite,
+        SpirVConstantValue, SpirVDecorate, SpirVDecorateType, SpirVEntryPoint, SpirVExecutionModel,
+        SpirVMemoryModel, SpirVOp, SpirVStorageClass, SpirVType, SpirVVariableId,
     },
 };
 
@@ -159,6 +159,84 @@ impl AirToSpirV {
         }
     }
 
+    pub fn codegen_functions(
+        module: &AirModule,
+        builder: &mut SpirVBuilder,
+        entry_points: &HashMap<AirFunctionSignatureId, SpirVVariableId>,
+    ) -> Result<()> {
+        for (air_id, spirv_type_id) in entry_points {
+            let air_function_signature = module.get_function_signature(*air_id).unwrap();
+            let mut function_body = None;
+            for i in &module.function_bodies {
+                if i.signature == *air_id {
+                    function_body = Some(i);
+                }
+            }
+
+            let air_function_name = module.string_table[air_function_signature.name.0 as usize]
+                .content
+                .clone();
+
+            let mut arguments = vec![];
+            let air_function_body = function_body.unwrap();
+            match builder
+                .module
+                .type_table
+                .get(spirv_type_id)
+                .unwrap()
+                .clone()
+            {
+                SpirVType::Function(output, inputs) => {
+                    let new_output_type =
+                        builder.new_type(SpirVType::Pointer(SpirVStorageClass::Output, output));
+
+                    arguments.push(builder.new_variable(
+                        &(air_function_name.clone() + "_air_output"),
+                        new_output_type,
+                        SpirVStorageClass::Output,
+                        None,
+                    ));
+
+                    let mut input_count = 0;
+                    for i in inputs {
+                        let new_input_type =
+                            builder.new_type(SpirVType::Pointer(SpirVStorageClass::Input, i));
+
+                        arguments.push(builder.new_variable(
+                            &(air_function_name.clone() + "_air_input_" + &input_count.to_string()),
+                            new_input_type,
+                            SpirVStorageClass::Input,
+                            None,
+                        ));
+
+                        input_count += 1;
+                    }
+                }
+                _ => todo!(),
+            }
+
+            let spirv_final_function_type = builder.new_type(SpirVType::Void);
+            let spirv_final_function_pointer =
+                builder.new_type(SpirVType::Function(spirv_final_function_type, vec![]));
+
+            let function = builder.new_function(
+                &air_function_name,
+                spirv_final_function_pointer,
+                spirv_final_function_type,
+                vec![],
+            );
+
+            builder.new_entry_point(
+                &air_function_name,
+                function,
+                SpirVExecutionModel::Vertex,
+                arguments,
+            );
+        }
+
+        Ok(())
+    }
+
     pub fn start(&mut self) -> Result<()> {
         let mut module: Option<AirModule> = None;
 
@@ -240,22 +318,9 @@ impl AirToSpirV {
                         }
                     };
 
-                    let entry_point_values = match module.metadata_constants.get(&entry[1]).unwrap()
-                    {
-                        AirMetadataConstant::Node(entry_point_values) => entry_point_values,
-                        _ => {
-                            panic!(
-                                "Expected Node Group, found {:?}",
-                                module.metadata_constants[&entry[1]]
-                            )
-                        }
-                    };
-
-                    let entry_point_vertex_id =
-                        match module.metadata_constants.get(&entry[2]).unwrap() {
-                            AirMetadataConstant::Node(entry_point_vertex_id) => {
-                                entry_point_vertex_id
-                            }
+                    let entry_point_outputs =
+                        match module.metadata_constants.get(&entry[1]).unwrap() {
+                            AirMetadataConstant::Node(entry_point_outputs) => entry_point_outputs,
                             _ => {
                                 panic!(
                                     "Expected Node Group, found {:?}",
@@ -264,11 +329,22 @@ impl AirToSpirV {
                             }
                         };
 
-                    let vertex_info = Self::parse_vertex_info(
-                        &module,
-                        entry_point_values.clone(),
-                        entry_point_vertex_id.clone(),
-                    );
+                    let entry_point_inputs = match module.metadata_constants.get(&entry[2]).unwrap()
+                    {
+                        AirMetadataConstant::Node(entry_point_inputs) => entry_point_inputs,
+                        _ => {
+                            panic!(
+                                "Expected Node Group, found {:?}",
+                                module.metadata_constants[&entry[2]]
+                            )
+                        }
+                    };
+
+                    let mut vertex_info_output =
+                        Self::parse_vertex_info(&module, entry_point_outputs.clone());
+
+                    vertex_info_output
+                        .merge(Self::parse_vertex_info(&module, entry_point_inputs.clone()));
 
                     let air_function_type = Self::parse_air_type(
                         &mut builder,
@@ -276,32 +352,154 @@ impl AirToSpirV {
                         &AirType::Function(function_signature.ty.clone()),
                     );
 
-                    match &builder.module.type_table[&air_function_type] {
+                    let mut location_count = 0;
+                    let mut variable_count = 0;
+                    match &builder.module.type_table[&air_function_type].clone() {
                         SpirVType::Function(output, inputs) => {
-                            let output = &builder.module.type_table[output];
+                            let output = vec![*output];
+                            let mut arguments = Self::parse_entry_point_variable(
+                                &mut builder,
+                                &output,
+                                &vertex_info_output,
+                                &mut location_count,
+                                &mut variable_count,
+                            );
+
+                            arguments.extend(Self::parse_entry_point_variable(
+                                &mut builder,
+                                inputs,
+                                &vertex_info_output,
+                                &mut location_count,
+                                &mut variable_count,
+                            ));
+
+                            dbg!(arguments);
                         }
                         _ => panic!(
                             "Expected Function, found {:?}",
                             &builder.module.type_table[&air_function_type]
                         ),
                     }
+
+                    entry_points.insert(function_signature.global_id, air_function_type);
                 }
             }
             None => {}
         }
+
+        Self::codegen_functions(&module, &mut builder, &entry_points)?;
 
         todo!("{:#?}", builder.module);
 
         Ok(())
     }
 
+    pub fn parse_entry_point_variable(
+        builder: &mut SpirVBuilder,
+        inputs: &Vec<SpirVVariableId>,
+        info: &VertexFunctionInfo,
+        variable_count: &mut usize,
+        location: &mut u32,
+    ) -> Vec<SpirVVariableId> {
+        let mut result: Vec<SpirVVariableId> = vec![];
+        for i in inputs {
+            let input = builder.module.type_table.get(&i).unwrap().clone();
+            match input {
+                SpirVType::Struct(elements) => {
+                    for i in elements {
+                        let element_info = &info.variables[*variable_count];
+                        let pointer =
+                            builder.new_type(SpirVType::Pointer(SpirVStorageClass::Output, i));
+                        match &element_info.ty {
+                            ShaderVariableType::Output(output) => match output {
+                                ShaderOutputType::VertexOutput => {
+                                    let output_var = builder.new_variable(
+                                        &element_info.name.clone(),
+                                        pointer,
+                                        SpirVStorageClass::Output,
+                                        None,
+                                    );
+
+                                    let location_ty = SpirVDecorateType::Location(*location);
+                                    *location += 1;
+
+                                    builder.set_decorate(
+                                        output_var,
+                                        SpirVDecorate {
+                                            ty: location_ty,
+                                            member_decorates: vec![],
+                                        },
+                                    );
+
+                                    result.push(output_var);
+                                }
+                                ShaderOutputType::Position => {
+                                    let float = builder.new_type(SpirVType::Float(32));
+                                    let clip_cull_array =
+                                        builder.new_type(SpirVType::Array(float, 1));
+                                    let spirv_position_type = builder.new_struct_type(
+                                        &element_info.name.clone(),
+                                        false,
+                                        vec![
+                                            ("Position".to_string(), i),
+                                            ("PointSize".to_string(), float),
+                                            ("ClipDistance".to_string(), clip_cull_array),
+                                            ("CullDistance".to_string(), clip_cull_array),
+                                        ],
+                                    );
+
+                                    builder.set_decorate(
+                                        spirv_position_type,
+                                        SpirVDecorate {
+                                            ty: SpirVDecorateType::Block,
+                                            member_decorates: vec![
+                                                SpirVDecorateType::BuiltIn(SpirVBuiltIn::Position),
+                                                SpirVDecorateType::BuiltIn(SpirVBuiltIn::PointSize),
+                                                SpirVDecorateType::BuiltIn(
+                                                    SpirVBuiltIn::ClipDistance,
+                                                ),
+                                                SpirVDecorateType::BuiltIn(
+                                                    SpirVBuiltIn::CullDistance,
+                                                ),
+                                            ],
+                                        },
+                                    );
+
+                                    let pointer = builder.new_type(SpirVType::Pointer(
+                                        SpirVStorageClass::Output,
+                                        spirv_position_type,
+                                    ));
+
+                                    result.push(builder.new_variable(
+                                        "VertexOutput",
+                                        pointer,
+                                        SpirVStorageClass::Output,
+                                        None,
+                                    ));
+                                }
+                            },
+                            _ => todo!("{:?}", element_info),
+                        }
+                        *variable_count += 1;
+                    }
+                }
+                _ => {
+                    let element_info = &info.variables[*variable_count];
+                    panic!("{:?}", element_info);
+                }
+            }
+        }
+
+        result
+    }
+
     pub fn parse_metadata_value(
         properties: &Vec<u64>,
         module: &AirModule,
-        user_location: &mut Option<u64>,
         value_name: &mut String,
+        start_at: usize,
     ) {
-        let mut count = 1;
+        let mut count = start_at;
 
         loop {
             if count >= properties.len() {
@@ -310,15 +508,8 @@ impl AirToSpirV {
 
             let variable_string = module.get_metadata_string(properties[count]).unwrap();
 
-            if variable_string.contains("user(locn") {
-                let start_location_num =
-                    variable_string.find("user(locn").unwrap() + "user(locn".len();
-                let end_location_num = variable_string.find(")").unwrap();
-                let user_location_string =
-                    &variable_string[start_location_num..end_location_num].to_string();
-
-                *user_location = Some(user_location_string.parse::<u64>().unwrap());
-            } else {
+            // TODO: Handle user defined locations.
+            if !variable_string.starts_with("user") {
                 match variable_string.as_str() {
                     "air.arg_type_name" => {
                         // Skip, since we already have the AIR/LLVM Type.
@@ -330,7 +521,7 @@ impl AirToSpirV {
                         *value_name = module.get_metadata_string(properties[count]).unwrap();
                     }
                     _ => {
-                        todo!()
+                        todo!("{:?}", variable_string)
                     }
                 }
             }
@@ -342,9 +533,9 @@ impl AirToSpirV {
     pub fn parse_vertex_info(
         module: &AirModule,
         vertex_values_info: Vec<u64>,
-        vertex_id_info: Vec<u64>,
     ) -> VertexFunctionInfo {
-        let mut outputs: Vec<ShaderOutput> = vec![];
+        let mut variables: Vec<ShaderVariable> = vec![];
+        let mut location_id = 0;
         for i in vertex_values_info {
             let vertex_properties = match module.metadata_constants.get(&i).unwrap() {
                 AirMetadataConstant::Node(vertex_properties) => vertex_properties,
@@ -356,33 +547,65 @@ impl AirToSpirV {
                 }
             };
 
-            let variable_name = module.get_metadata_string(vertex_properties[0]).unwrap();
+            dbg!("{:?}", vertex_properties);
 
-            let mut vertex_output = ShaderOutput::default();
+            // TODO: Make a more elegant solution if a string isn't found.
+            let mut starts_at_two = false;
+            let variable_name = match module.get_metadata_string(vertex_properties[0]) {
+                Some(v) => v,
+                None => {
+                    starts_at_two = true;
+                    module.get_metadata_string(vertex_properties[1]).unwrap()
+                }
+            };
+
+            let mut vertex_variable = ShaderVariable::default();
+            let mut variable_location_id = None;
             match variable_name.as_str() {
-                "air.vertex_output" => vertex_output.ty = ShaderOutputType::VertexOutput,
-                "air.position" => vertex_output.ty = ShaderOutputType::Position,
+                "air.vertex_output" => {
+                    vertex_variable.ty = ShaderVariableType::Output({
+                        variable_location_id = Some(location_id);
+                        location_id += 1;
+                        ShaderOutputType::VertexOutput
+                    })
+                }
+                "air.position" => {
+                    vertex_variable.ty = ShaderVariableType::Output(ShaderOutputType::Position)
+                }
+                "air.vertex_id" => {
+                    vertex_variable.ty = ShaderVariableType::Input(ShaderInputType::VertexID)
+                }
                 _ => todo!("{:?}", variable_name),
             }
+
+            vertex_variable.location = variable_location_id;
 
             Self::parse_metadata_value(
                 vertex_properties,
                 module,
-                &mut vertex_output.location,
-                &mut vertex_output.name,
+                &mut vertex_variable.name,
+                if starts_at_two { 2 } else { 1 },
             );
-            outputs.push(vertex_output);
+            variables.push(vertex_variable);
         }
 
-        VertexFunctionInfo { outputs }
+        VertexFunctionInfo { variables }
     }
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct ShaderOutput {
-    pub ty: ShaderOutputType,
+pub struct ShaderVariable {
+    pub ty: ShaderVariableType,
     pub name: String,
     pub location: Option<u64>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub enum ShaderVariableType {
+    #[default]
+    Unknown,
+    Input(ShaderInputType),
+    Output(ShaderOutputType),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -393,6 +616,13 @@ pub enum ShaderOutputType {
 }
 
 #[derive(Debug, Default, Clone)]
+pub enum ShaderInputType {
+    #[default]
+    VertexInput,
+    VertexID,
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct PositionOutput {
     pub name: String,
     pub type_id: SpirVVariableId,
@@ -400,5 +630,11 @@ pub struct PositionOutput {
 
 #[derive(Debug, Default, Clone)]
 pub struct VertexFunctionInfo {
-    pub outputs: Vec<ShaderOutput>,
+    pub variables: Vec<ShaderVariable>,
+}
+
+impl VertexFunctionInfo {
+    pub fn merge(&mut self, with: VertexFunctionInfo) {
+        self.variables.extend(with.variables);
+    }
 }

@@ -947,7 +947,10 @@ impl Parser {
 
         result.current_function_local_id += 1;
 
-        result.function_bodies[function_body_id - 1] = AirFunctionBody { contents };
+        result.function_bodies[function_body_id - 1] = AirFunctionBody {
+            signature: result.function_signatures[function_body_id - 1].global_id,
+            contents,
+        };
 
         Ok(())
     }

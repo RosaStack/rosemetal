@@ -1,7 +1,8 @@
 use crate::spirv_parser::{
-    SpirVAddressingModel, SpirVAlloca, SpirVCapability, SpirVConstant, SpirVConstantComposite,
-    SpirVEntryPoint, SpirVExecutionModel, SpirVMemoryModel, SpirVModule, SpirVName, SpirVOp,
-    SpirVStorageClass, SpirVType, SpirVVariableId,
+    FunctionControl, SpirVAddressingModel, SpirVAlloca, SpirVCapability, SpirVConstant,
+    SpirVConstantComposite, SpirVDecorate, SpirVDecorateType, SpirVEntryPoint, SpirVExecutionModel,
+    SpirVFunction, SpirVMemoryModel, SpirVModule, SpirVName, SpirVOp, SpirVStorageClass, SpirVType,
+    SpirVVariableId,
 };
 
 pub struct SpirVBuilder {
@@ -194,6 +195,24 @@ impl SpirVBuilder {
         var
     }
 
+    pub fn set_decorate(&mut self, member_id: SpirVVariableId, decorate: SpirVDecorate) {
+        self.module
+            .decorate_table
+            .insert(member_id, decorate.clone());
+
+        self.module
+            .operands
+            .push(SpirVOp::Decorate(member_id, decorate.ty));
+
+        let mut count = 0;
+        for i in decorate.member_decorates {
+            self.module
+                .operands
+                .push(SpirVOp::MemberDecorate(member_id, count, i));
+            count += 1;
+        }
+    }
+
     pub fn new_constant_composite(&mut self, composite: SpirVConstantComposite) -> SpirVVariableId {
         let var = SpirVVariableId(self.current_variable_id);
 
@@ -210,6 +229,39 @@ impl SpirVBuilder {
         self.module
             .operands
             .push(SpirVOp::ConstantComposite(var, composite));
+
+        self.current_variable_id += 1;
+
+        var
+    }
+
+    pub fn new_function(
+        &mut self,
+        name: &str,
+        function_type: SpirVVariableId,
+        return_type: SpirVVariableId,
+        contents: Vec<SpirVOp>,
+    ) -> SpirVVariableId {
+        let var = SpirVVariableId(self.current_variable_id);
+
+        self.module.name_table.insert(
+            var,
+            SpirVName {
+                name: name.to_string(),
+                member_names: vec![],
+            },
+        );
+
+        let function = SpirVFunction {
+            function_type_id: function_type,
+            return_type_id: return_type,
+            function_control: FunctionControl::None,
+            instructions: contents,
+        };
+
+        self.module.functions_table.insert(var, function.clone());
+
+        self.module.operands.push(SpirVOp::Function(var, function));
 
         self.current_variable_id += 1;
 

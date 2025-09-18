@@ -382,6 +382,7 @@ pub struct AirCast {
 
 #[derive(Debug, Default, Clone)]
 pub struct AirFunctionBody {
+    pub signature: AirFunctionSignatureId,
     pub contents: Vec<AirValueId>,
 }
 
