@@ -164,75 +164,7 @@ impl AirToSpirV {
         builder: &mut SpirVBuilder,
         entry_points: &HashMap<AirFunctionSignatureId, SpirVVariableId>,
     ) -> Result<()> {
-        for (air_id, spirv_type_id) in entry_points {
-            let air_function_signature = module.get_function_signature(*air_id).unwrap();
-            let mut function_body = None;
-            for i in &module.function_bodies {
-                if i.signature == *air_id {
-                    function_body = Some(i);
-                }
-            }
-
-            let air_function_name = module.string_table[air_function_signature.name.0 as usize]
-                .content
-                .clone();
-
-            let mut arguments = vec![];
-            let air_function_body = function_body.unwrap();
-            match builder
-                .module
-                .type_table
-                .get(spirv_type_id)
-                .unwrap()
-                .clone()
-            {
-                SpirVType::Function(output, inputs) => {
-                    let new_output_type =
-                        builder.new_type(SpirVType::Pointer(SpirVStorageClass::Output, output));
-
-                    arguments.push(builder.new_variable(
-                        &(air_function_name.clone() + "_air_output"),
-                        new_output_type,
-                        SpirVStorageClass::Output,
-                        None,
-                    ));
-
-                    let mut input_count = 0;
-                    for i in inputs {
-                        let new_input_type =
-                            builder.new_type(SpirVType::Pointer(SpirVStorageClass::Input, i));
-
-                        arguments.push(builder.new_variable(
-                            &(air_function_name.clone() + "_air_input_" + &input_count.to_string()),
-                            new_input_type,
-                            SpirVStorageClass::Input,
-                            None,
-                        ));
-
-                        input_count += 1;
-                    }
-                }
-                _ => todo!(),
-            }
-
-            let spirv_final_function_type = builder.new_type(SpirVType::Void);
-            let spirv_final_function_pointer =
-                builder.new_type(SpirVType::Function(spirv_final_function_type, vec![]));
-
-            let function = builder.new_function(
-                &air_function_name,
-                spirv_final_function_pointer,
-                spirv_final_function_type,
-                vec![],
-            );
-
-            builder.new_entry_point(
-                &air_function_name,
-                function,
-                SpirVExecutionModel::Vertex,
-                arguments,
-            );
-        }
+        for (air_id, spirv_type_id) in entry_points {}
 
         Ok(())
     }
@@ -354,16 +286,17 @@ impl AirToSpirV {
 
                     let mut location_count = 0;
                     let mut variable_count = 0;
+                    let mut arguments = vec![];
                     match &builder.module.type_table[&air_function_type].clone() {
                         SpirVType::Function(output, inputs) => {
                             let output = vec![*output];
-                            let mut arguments = Self::parse_entry_point_variable(
+                            arguments.extend(Self::parse_entry_point_variable(
                                 &mut builder,
                                 &output,
                                 &vertex_info_output,
                                 &mut location_count,
                                 &mut variable_count,
-                            );
+                            ));
 
                             arguments.extend(Self::parse_entry_point_variable(
                                 &mut builder,
@@ -372,8 +305,6 @@ impl AirToSpirV {
                                 &mut location_count,
                                 &mut variable_count,
                             ));
-
-                            dbg!(arguments);
                         }
                         _ => panic!(
                             "Expected Function, found {:?}",
@@ -381,7 +312,23 @@ impl AirToSpirV {
                         ),
                     }
 
-                    entry_points.insert(function_signature.global_id, air_function_type);
+                    entry_points.insert(
+                        function_signature.global_id,
+                        builder.new_entry_point(
+                            &module.string_table[function_signature.name.0 as usize].content,
+                            SpirVVariableId(0),
+                            SpirVExecutionModel::Vertex,
+                            arguments,
+                        ),
+                    );
+
+                    panic!(
+                        "{:?}",
+                        builder
+                            .module
+                            .entry_point_table
+                            .get(entry_points.get(&function_signature.global_id).unwrap())
+                    );
                 }
             }
             None => {}
