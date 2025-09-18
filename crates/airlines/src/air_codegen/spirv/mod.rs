@@ -1,4 +1,4 @@
-use std::{collections::HashMap, default, hash::Hash};
+use std::{collections::HashMap, default, hash::Hash, thread::current};
 
 use anyhow::{Result, anyhow};
 
@@ -394,6 +394,124 @@ impl AirToSpirV {
         Ok(())
     }
 
+    pub fn shader_variable_to_spirv_variable(
+        builder: &mut SpirVBuilder,
+        location: &mut u32,
+        current_ty: SpirVVariableId,
+        element_info: &ShaderVariable,
+    ) -> SpirVVariableId {
+        match &element_info.ty {
+            ShaderVariableType::Output(output) => match output {
+                ShaderOutputType::VertexOutput => {
+                    let output_pointer =
+                        builder.new_type(SpirVType::Pointer(SpirVStorageClass::Output, current_ty));
+
+                    let output_var = builder.new_variable(
+                        &element_info.name.clone(),
+                        output_pointer,
+                        SpirVStorageClass::Output,
+                        None,
+                    );
+
+                    let location_ty = SpirVDecorateType::Location(*location);
+                    *location += 1;
+
+                    builder.set_decorate(
+                        output_var,
+                        SpirVDecorate {
+                            ty: location_ty,
+                            member_decorates: vec![],
+                        },
+                    );
+
+                    output_var
+                }
+                ShaderOutputType::Position => {
+                    let float = builder.new_type(SpirVType::Float(32));
+                    let clip_cull_array = builder.new_type(SpirVType::Array(float, 1));
+                    let spirv_position_type = builder.new_struct_type(
+                        &element_info.name.clone(),
+                        false,
+                        vec![
+                            ("Position".to_string(), current_ty),
+                            ("PointSize".to_string(), float),
+                            ("ClipDistance".to_string(), clip_cull_array),
+                            ("CullDistance".to_string(), clip_cull_array),
+                        ],
+                    );
+
+                    builder.set_decorate(
+                        spirv_position_type,
+                        SpirVDecorate {
+                            ty: SpirVDecorateType::Block,
+                            member_decorates: vec![
+                                SpirVDecorateType::BuiltIn(SpirVBuiltIn::Position),
+                                SpirVDecorateType::BuiltIn(SpirVBuiltIn::PointSize),
+                                SpirVDecorateType::BuiltIn(SpirVBuiltIn::ClipDistance),
+                                SpirVDecorateType::BuiltIn(SpirVBuiltIn::CullDistance),
+                            ],
+                        },
+                    );
+
+                    let pointer = builder.new_type(SpirVType::Pointer(
+                        SpirVStorageClass::Output,
+                        spirv_position_type,
+                    ));
+
+                    builder.new_variable("VertexOutput", pointer, SpirVStorageClass::Output, None)
+                }
+            },
+            ShaderVariableType::Input(input) => match input {
+                ShaderInputType::VertexInput => {
+                    let input_pointer =
+                        builder.new_type(SpirVType::Pointer(SpirVStorageClass::Input, current_ty));
+
+                    let input_var = builder.new_variable(
+                        &element_info.name.clone(),
+                        input_pointer,
+                        SpirVStorageClass::Input,
+                        None,
+                    );
+
+                    let location_ty = SpirVDecorateType::Location(*location);
+                    *location += 1;
+
+                    builder.set_decorate(
+                        input_var,
+                        SpirVDecorate {
+                            ty: location_ty,
+                            member_decorates: vec![],
+                        },
+                    );
+
+                    input_var
+                }
+                ShaderInputType::VertexID => {
+                    let input_pointer =
+                        builder.new_type(SpirVType::Pointer(SpirVStorageClass::Input, current_ty));
+
+                    let vertex_id = builder.new_variable(
+                        &element_info.name.clone(),
+                        input_pointer,
+                        SpirVStorageClass::Input,
+                        None,
+                    );
+
+                    builder.set_decorate(
+                        vertex_id,
+                        SpirVDecorate {
+                            ty: SpirVDecorateType::BuiltIn(SpirVBuiltIn::VertexId),
+                            member_decorates: vec![],
+                        },
+                    );
+
+                    vertex_id
+                }
+            },
+            _ => todo!("{:?}", element_info),
+        }
+    }
+
     pub fn parse_entry_point_variable(
         builder: &mut SpirVBuilder,
         inputs: &Vec<SpirVVariableId>,
@@ -408,84 +526,24 @@ impl AirToSpirV {
                 SpirVType::Struct(elements) => {
                     for i in elements {
                         let element_info = &info.variables[*variable_count];
-                        let pointer =
-                            builder.new_type(SpirVType::Pointer(SpirVStorageClass::Output, i));
-                        match &element_info.ty {
-                            ShaderVariableType::Output(output) => match output {
-                                ShaderOutputType::VertexOutput => {
-                                    let output_var = builder.new_variable(
-                                        &element_info.name.clone(),
-                                        pointer,
-                                        SpirVStorageClass::Output,
-                                        None,
-                                    );
-
-                                    let location_ty = SpirVDecorateType::Location(*location);
-                                    *location += 1;
-
-                                    builder.set_decorate(
-                                        output_var,
-                                        SpirVDecorate {
-                                            ty: location_ty,
-                                            member_decorates: vec![],
-                                        },
-                                    );
-
-                                    result.push(output_var);
-                                }
-                                ShaderOutputType::Position => {
-                                    let float = builder.new_type(SpirVType::Float(32));
-                                    let clip_cull_array =
-                                        builder.new_type(SpirVType::Array(float, 1));
-                                    let spirv_position_type = builder.new_struct_type(
-                                        &element_info.name.clone(),
-                                        false,
-                                        vec![
-                                            ("Position".to_string(), i),
-                                            ("PointSize".to_string(), float),
-                                            ("ClipDistance".to_string(), clip_cull_array),
-                                            ("CullDistance".to_string(), clip_cull_array),
-                                        ],
-                                    );
-
-                                    builder.set_decorate(
-                                        spirv_position_type,
-                                        SpirVDecorate {
-                                            ty: SpirVDecorateType::Block,
-                                            member_decorates: vec![
-                                                SpirVDecorateType::BuiltIn(SpirVBuiltIn::Position),
-                                                SpirVDecorateType::BuiltIn(SpirVBuiltIn::PointSize),
-                                                SpirVDecorateType::BuiltIn(
-                                                    SpirVBuiltIn::ClipDistance,
-                                                ),
-                                                SpirVDecorateType::BuiltIn(
-                                                    SpirVBuiltIn::CullDistance,
-                                                ),
-                                            ],
-                                        },
-                                    );
-
-                                    let pointer = builder.new_type(SpirVType::Pointer(
-                                        SpirVStorageClass::Output,
-                                        spirv_position_type,
-                                    ));
-
-                                    result.push(builder.new_variable(
-                                        "VertexOutput",
-                                        pointer,
-                                        SpirVStorageClass::Output,
-                                        None,
-                                    ));
-                                }
-                            },
-                            _ => todo!("{:?}", element_info),
-                        }
+                        result.push(Self::shader_variable_to_spirv_variable(
+                            builder,
+                            location,
+                            i,
+                            element_info,
+                        ));
                         *variable_count += 1;
                     }
                 }
                 _ => {
                     let element_info = &info.variables[*variable_count];
-                    panic!("{:?}", element_info);
+                    result.push(Self::shader_variable_to_spirv_variable(
+                        builder,
+                        location,
+                        *i,
+                        element_info,
+                    ));
+                    *variable_count += 1;
                 }
             }
         }
