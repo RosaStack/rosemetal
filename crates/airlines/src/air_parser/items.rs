@@ -63,7 +63,7 @@ pub struct AirConstant {
     pub value: AirConstantValue,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub enum AirConstantValue {
     #[default]
     Null,
@@ -72,7 +72,7 @@ pub enum AirConstantValue {
     Unresolved(u64),
     Integer(u64),
     Float32(f32),
-    Aggregate(Vec<AirConstantId>),
+    Aggregate(Vec<AirValueId>),
     Array(Vec<AirConstantValue>),
     Pointer(u64),
 }
@@ -322,7 +322,7 @@ pub enum AirMetadataConstant {
     String(String),
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub enum AirValue {
     #[default]
     Empty,
@@ -338,26 +338,26 @@ pub enum AirValue {
     Return(AirReturn),
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct AirReturn {
     pub value: AirValueId,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct AirInsertVal {
     pub value1: AirValueId,
     pub value2: AirValueId,
     pub insert_value_idx: u64,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct AirShuffleVec {
     pub vec1: AirValueId,
     pub vec2: AirValueId,
     pub mask: AirValueId,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct AirLoad {
     pub op: AirValueId,
     pub ty: AirType,
@@ -365,7 +365,7 @@ pub struct AirLoad {
     pub vol: u64,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct AirGetElementPtr {
     pub no_wrap_flags: GEPNoWrapFlags,
     pub ty: AirType,
@@ -373,7 +373,7 @@ pub struct AirGetElementPtr {
     pub indices: Vec<AirValueId>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct AirCast {
     pub value: AirValueId,
     pub cast_to_type: AirType,
@@ -386,7 +386,7 @@ pub struct AirFunctionBody {
     pub contents: Vec<AirValueId>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct AirLocal {
     pub id: u64,
     pub type_id: AirTypeId,
@@ -634,33 +634,34 @@ pub struct AirAttribute {
     pub properties: Vec<AirAttrProperties>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct AirArrayType {
     pub size: u64,
     pub element_type: AirTypeId,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct AirVectorType {
     pub size: u64,
     pub element_type: AirTypeId,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct AirStructType {
     pub name: String,
     pub is_packed: bool,
     pub elements: Vec<AirTypeId>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct AirFunctionType {
     pub vararg: u64,
     pub return_type: AirTypeId,
-    pub params: Vec<AirTypeId>,
+    pub param_types: Vec<AirTypeId>,
+    pub param_values: Vec<AirValueId>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub enum AirType {
     #[default]
     Void,

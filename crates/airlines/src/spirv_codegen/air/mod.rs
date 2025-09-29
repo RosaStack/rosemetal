@@ -72,10 +72,11 @@ impl SpirVToAir {
                         self.output.new_type(AirType::Function(AirFunctionType {
                             vararg: 0,
                             return_type: *types.get(id).unwrap(),
-                            params: args
+                            param_types: args
                                 .iter()
                                 .map(|arg| *types.get(arg).unwrap())
                                 .collect::<Vec<_>>(),
+                            param_values: vec![],
                         }))?
                     }
                     SpirVType::Struct(variables) => {

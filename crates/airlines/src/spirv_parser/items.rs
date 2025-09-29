@@ -31,9 +31,18 @@ pub enum SpirVOp {
     Load(SpirVVariableId, SpirVLoad),
     AccessChain(SpirVVariableId, SpirVAccessChain),
     CompositeExtract(SpirVVariableId, SpirVCompositeExtract),
+    CompositeInsert(SpirVVariableId, SpirVCompositeInsert),
     CompositeConstruct(SpirVVariableId, SpirVCompositeConstruct),
     Return,
     Function(SpirVVariableId, SpirVFunction),
+    BitCast(SpirVVariableId, SpirVBitCast),
+    VectorShuffle(SpirVVariableId, SpirVVectorShuffle),
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVBitCast {
+    pub variable: SpirVVariableId,
+    pub to_type: SpirVVariableId,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -45,6 +54,14 @@ pub struct SpirVCompositeConstruct {
 #[derive(Debug, Default, Clone)]
 pub struct SpirVCompositeExtract {
     pub type_id: SpirVVariableId,
+    pub composite_id: SpirVVariableId,
+    pub indices: Vec<u32>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVCompositeInsert {
+    pub type_id: SpirVVariableId,
+    pub object_id: SpirVVariableId,
     pub composite_id: SpirVVariableId,
     pub indices: Vec<u32>,
 }
@@ -100,6 +117,14 @@ impl SpirVMemoryOperands {
             _ => unimplemented!("{:#X}", v),
         }
     }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct SpirVVectorShuffle {
+    pub vec_type: SpirVVariableId,
+    pub vec1: SpirVVariableId,
+    pub vec2: SpirVVariableId,
+    pub mask: Vec<u32>,
 }
 
 #[derive(Debug, Default, Clone)]

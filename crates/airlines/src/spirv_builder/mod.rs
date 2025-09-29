@@ -1,13 +1,15 @@
 use crate::spirv_parser::{
-    FunctionControl, SpirVAddressingModel, SpirVAlloca, SpirVCapability, SpirVConstant,
-    SpirVConstantComposite, SpirVDecorate, SpirVDecorateType, SpirVEntryPoint, SpirVExecutionModel,
-    SpirVFunction, SpirVMemoryModel, SpirVModule, SpirVName, SpirVOp, SpirVStorageClass, SpirVType,
-    SpirVVariableId,
+    FunctionControl, SpirVAccessChain, SpirVAddressingModel, SpirVAlloca, SpirVBitCast, SpirVBlock,
+    SpirVCapability, SpirVCompositeInsert, SpirVConstant, SpirVConstantComposite, SpirVDecorate,
+    SpirVDecorateType, SpirVEntryPoint, SpirVExecutionModel, SpirVFunction, SpirVLoad,
+    SpirVMemoryModel, SpirVModule, SpirVName, SpirVOp, SpirVStorageClass, SpirVType,
+    SpirVVariableId, SpirVVectorShuffle,
 };
 
 pub struct SpirVBuilder {
     pub module: SpirVModule,
     current_variable_id: u32,
+    block_list: Vec<SpirVBlock>,
 }
 
 impl SpirVBuilder {
@@ -15,6 +17,7 @@ impl SpirVBuilder {
         Self {
             module: SpirVModule::default(),
             current_variable_id: 1,
+            block_list: vec![],
         }
     }
 
@@ -266,5 +269,74 @@ impl SpirVBuilder {
         self.current_variable_id += 1;
 
         var
+    }
+
+    pub fn new_basic_block(&mut self) {
+        self.block_list.push(SpirVBlock::default());
+    }
+
+    pub fn new_bit_cast(&mut self, cast: SpirVBitCast) -> SpirVVariableId {
+        let id = self.new_id();
+
+        let current_block = self.block_list.last_mut().unwrap();
+
+        current_block.instructions.push(SpirVOp::BitCast(id, cast));
+
+        id
+    }
+
+    pub fn new_access_chain(&mut self, access_chain: SpirVAccessChain) -> SpirVVariableId {
+        let id = self.new_id();
+
+        let current_block = self.block_list.last_mut().unwrap();
+
+        current_block
+            .instructions
+            .push(SpirVOp::AccessChain(id, access_chain));
+
+        id
+    }
+
+    pub fn new_load(&mut self, load: SpirVLoad) -> SpirVVariableId {
+        let id = self.new_id();
+
+        let current_block = self.block_list.last_mut().unwrap();
+
+        current_block.instructions.push(SpirVOp::Load(id, load));
+
+        id
+    }
+
+    pub fn new_vector_shuffle(&mut self, vector_shuffle: SpirVVectorShuffle) -> SpirVVariableId {
+        let id = self.new_id();
+
+        let current_block = self.block_list.last_mut().unwrap();
+
+        current_block
+            .instructions
+            .push(SpirVOp::VectorShuffle(id, vector_shuffle));
+
+        id
+    }
+
+    pub fn new_composite_insert(
+        &mut self,
+        composite_insert: SpirVCompositeInsert,
+    ) -> SpirVVariableId {
+        let id = self.new_id();
+
+        let current_block = self.block_list.last_mut().unwrap();
+
+        current_block
+            .instructions
+            .push(SpirVOp::CompositeInsert(id, composite_insert));
+
+        id
+    }
+
+    pub fn new_id(&mut self) -> SpirVVariableId {
+        let id = self.current_variable_id;
+        self.current_variable_id += 1;
+        SpirVVariableId(id)
     }
 }

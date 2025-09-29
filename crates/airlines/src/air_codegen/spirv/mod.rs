@@ -3,16 +3,19 @@ use std::{collections::HashMap, default, hash::Hash, thread::current};
 use anyhow::{Result, anyhow};
 
 use crate::{
+    air_codegen::spirv,
     air_parser::{
         AirConstant, AirConstantId, AirConstantValue, AirFile, AirFunctionSignature,
         AirFunctionSignatureId, AirFunctionType, AirGlobalVariableId, AirItem, AirMetadataConstant,
-        AirMetadataNamedNode, AirModule, AirType, AirTypeId, AirValue,
+        AirMetadataNamedNode, AirModule, AirType, AirTypeId, AirValue, AirValueId, AirVectorType,
     },
     spirv_builder::SpirVBuilder,
     spirv_parser::{
-        SpirVAddressingModel, SpirVBuiltIn, SpirVCapability, SpirVConstant, SpirVConstantComposite,
-        SpirVConstantValue, SpirVDecorate, SpirVDecorateType, SpirVEntryPoint, SpirVExecutionModel,
-        SpirVMemoryModel, SpirVOp, SpirVStorageClass, SpirVType, SpirVVariableId,
+        SpirVAccessChain, SpirVAddressingModel, SpirVBitCast, SpirVBuiltIn, SpirVCapability,
+        SpirVCompositeInsert, SpirVConstant, SpirVConstantComposite, SpirVConstantValue,
+        SpirVDecorate, SpirVDecorateType, SpirVEntryPoint, SpirVExecutionModel, SpirVLoad,
+        SpirVMemoryModel, SpirVMemoryOperands, SpirVOp, SpirVStorageClass, SpirVType,
+        SpirVVariableId, SpirVVectorShuffle,
     },
 };
 
@@ -45,7 +48,7 @@ impl AirToSpirV {
                     &module.types[function_ty.return_type.0 as usize],
                 );
                 let args = function_ty
-                    .params
+                    .param_types
                     .iter()
                     .map(|ty| Self::parse_air_type(builder, module, &module.types[ty.0 as usize]))
                     .collect::<Vec<_>>();
@@ -135,12 +138,17 @@ impl AirToSpirV {
             AirConstantValue::Aggregate(elements) => {
                 let values = elements
                     .iter()
-                    .map(|value| match module.constants.get(value) {
+                    .map(|value| match module.value_list.get(value.0 as usize) {
                         Some(value) => Self::parse_air_constant(
                             builder,
                             module,
                             type_id,
-                            Some(value.clone()),
+                            match value {
+                                AirValue::Constant(constant) => {
+                                    Some(module.constants.get(&constant).unwrap().clone())
+                                }
+                                _ => None,
+                            },
                             None,
                         ),
                         None => Self::parse_air_constant(
@@ -157,16 +165,6 @@ impl AirToSpirV {
             }
             _ => todo!("{:?}", const_val),
         }
-    }
-
-    pub fn codegen_functions(
-        module: &AirModule,
-        builder: &mut SpirVBuilder,
-        entry_points: &HashMap<AirFunctionSignatureId, SpirVVariableId>,
-    ) -> Result<()> {
-        for (air_id, spirv_type_id) in entry_points {}
-
-        Ok(())
     }
 
     pub fn start(&mut self) -> Result<()> {
@@ -191,6 +189,7 @@ impl AirToSpirV {
         builder.add_memory_model(SpirVAddressingModel::Logical, SpirVMemoryModel::Glsl450);
 
         let mut constants: HashMap<AirConstantId, SpirVVariableId> = HashMap::new();
+        dbg!(&module.constants.len());
         for (id, constant) in &module.constants {
             let ty =
                 Self::parse_air_type(&mut builder, &module, &module.types[constant.ty.0 as usize]);
@@ -198,6 +197,7 @@ impl AirToSpirV {
                 Self::parse_air_constant(&mut builder, &module, ty, Some(constant.clone()), None);
             constants.insert(*id, constant);
         }
+        dbg!(&constants.len());
 
         let mut global_variables: HashMap<AirGlobalVariableId, SpirVVariableId> = HashMap::new();
         for (id, global_var) in &module.global_variables {
@@ -286,11 +286,13 @@ impl AirToSpirV {
 
                     let mut location_count = 0;
                     let mut variable_count = 0;
-                    let mut arguments = vec![];
+                    let mut spirv_inputs = vec![];
+                    let mut spirv_outputs = vec![];
+                    let mut air_arguments = vec![];
                     match &builder.module.type_table[&air_function_type].clone() {
                         SpirVType::Function(output, inputs) => {
                             let output = vec![*output];
-                            arguments.extend(Self::parse_entry_point_variable(
+                            spirv_outputs.extend(Self::parse_entry_point_variable(
                                 &mut builder,
                                 &output,
                                 &vertex_info_output,
@@ -298,7 +300,7 @@ impl AirToSpirV {
                                 &mut variable_count,
                             ));
 
-                            arguments.extend(Self::parse_entry_point_variable(
+                            spirv_inputs.extend(Self::parse_entry_point_variable(
                                 &mut builder,
                                 inputs,
                                 &vertex_info_output,
@@ -312,13 +314,29 @@ impl AirToSpirV {
                         ),
                     }
 
+                    air_arguments.extend(function_signature.ty.param_values.clone());
+
+                    let function = Self::parse_air_function(
+                        &mut builder,
+                        &module,
+                        function_signature.global_id,
+                        &air_arguments,
+                        &spirv_inputs,
+                        &spirv_outputs,
+                        &global_variables,
+                        &constants,
+                    );
+
+                    let mut spirv_arguments = spirv_outputs.clone();
+                    spirv_arguments.extend(spirv_inputs);
+
                     entry_points.insert(
                         function_signature.global_id,
                         builder.new_entry_point(
                             &module.string_table[function_signature.name.0 as usize].content,
-                            SpirVVariableId(0),
+                            function,
                             SpirVExecutionModel::Vertex,
-                            arguments,
+                            spirv_arguments,
                         ),
                     );
 
@@ -334,11 +352,212 @@ impl AirToSpirV {
             None => {}
         }
 
-        Self::codegen_functions(&module, &mut builder, &entry_points)?;
-
         todo!("{:#?}", builder.module);
 
         Ok(())
+    }
+
+    pub fn vec_mask_to_literal_array(air_mask: AirValueId, module: &AirModule) -> Vec<u32> {
+        let vec_value = module.value_list.get(air_mask.0 as usize).unwrap();
+        let vec_constant = match vec_value {
+            AirValue::Constant(constant) => {
+                let constant = module.constants.get(constant).unwrap();
+                match &constant.value {
+                    AirConstantValue::Aggregate(agg) => agg
+                        .iter()
+                        .map(|i| match module.value_list.get(i.0 as usize).unwrap() {
+                            AirValue::Constant(c) => &module.constants.get(&c).unwrap().value,
+                            _ => panic!("Expected Constant. Found {:?}", i),
+                        })
+                        .collect::<Vec<_>>(),
+                    AirConstantValue::Array(arr) => arr.iter().map(|x| x).collect::<Vec<_>>(),
+                    _ => panic!("Expected Aggregate or Array. Found {:?}", &constant.value),
+                }
+            }
+            _ => panic!("Expected Constant. Found {:?}", vec_value),
+        };
+
+        let mut result = vec![];
+        for i in vec_constant {
+            match i {
+                AirConstantValue::Integer(int) => result.push(*int as u32),
+                AirConstantValue::Null | AirConstantValue::Undefined => result.push(0),
+                _ => panic!("Expected Integer. Found {:?}", i),
+            }
+        }
+
+        result
+    }
+
+    pub fn get_air_type_from_value<'a>(module: &'a AirModule, value_id: AirValueId) -> &'a AirType {
+        let get_air_ty = module.value_list.get(value_id.0 as usize).unwrap();
+
+        match get_air_ty {
+            AirValue::Constant(constant) => {
+                let constant = module.constants.get(constant).unwrap();
+                let air_ty = module.types.get(constant.ty.0 as usize).unwrap();
+                air_ty
+            }
+            AirValue::Load(load) => &load.ty,
+            AirValue::ShuffleVec(shuffle_vec) => {
+                let size = {
+                    let mask = Self::get_air_type_from_value(module, shuffle_vec.mask);
+                    match mask {
+                        AirType::Vector(v) => v.size,
+                        _ => panic!("Expected Vector, Found: {:?}", mask),
+                    }
+                };
+
+                let element_type = {
+                    let vec1 = Self::get_air_type_from_value(module, shuffle_vec.vec1);
+                    match vec1 {
+                        AirType::Vector(v) => v.element_type,
+                        _ => panic!("Expected Vector, Found: {:?}", vec1),
+                    }
+                };
+
+                for i in &module.types {
+                    if *i == AirType::Vector(AirVectorType { size, element_type }) {
+                        return i;
+                    }
+                }
+
+                todo!()
+            }
+            AirValue::InsertVal(air_insert_val) => {
+                Self::get_air_type_from_value(module, air_insert_val.value1)
+            }
+            _ => todo!("{:?}", get_air_ty),
+        }
+    }
+
+    pub fn parse_air_value(
+        builder: &mut SpirVBuilder,
+        module: &AirModule,
+        value_id: AirValueId,
+        value_list: &HashMap<AirValueId, SpirVVariableId>,
+    ) -> SpirVVariableId {
+        let value = module.value_list.get(value_id.0 as usize).unwrap();
+
+        match value {
+            AirValue::Cast(air_cast) => {
+                let to_type = Self::parse_air_type(builder, module, &air_cast.cast_to_type);
+
+                return builder.new_bit_cast(SpirVBitCast {
+                    variable: *value_list.get(&air_cast.value).unwrap(),
+                    to_type,
+                });
+            }
+            AirValue::GetElementPtr(air_gep) => {
+                let element_ty = Self::parse_air_type(builder, module, &air_gep.ty);
+                let pointer_ty =
+                    builder.new_type(SpirVType::Pointer(SpirVStorageClass::Private, element_ty));
+
+                let spirv_base = *value_list.get(&air_gep.base_ptr_value).unwrap();
+                let mut spirv_indices = vec![];
+                for i in &air_gep.indices {
+                    spirv_indices.push(*value_list.get(&i).unwrap());
+                }
+
+                return builder.new_access_chain(SpirVAccessChain {
+                    type_id: pointer_ty,
+                    base_id: spirv_base,
+                    indices: spirv_indices,
+                });
+            }
+            AirValue::Load(air_load) => {
+                let operand = value_list.get(&air_load.op).unwrap();
+
+                let load_ty = Self::parse_air_type(builder, module, &air_load.ty);
+
+                return builder.new_load(SpirVLoad {
+                    type_id: load_ty,
+                    pointer_id: *operand,
+                    memory_operands: SpirVMemoryOperands::None,
+                });
+            }
+            AirValue::ShuffleVec(air_shuffle_vec) => {
+                let vec_type = Self::get_air_type_from_value(module, value_id);
+
+                let vec1 = *value_list.get(&air_shuffle_vec.vec1).unwrap();
+                let vec2 = *value_list.get(&air_shuffle_vec.vec2).unwrap();
+
+                let mask = Self::vec_mask_to_literal_array(air_shuffle_vec.mask, module);
+
+                let vec_type = Self::parse_air_type(builder, module, vec_type);
+                builder.new_vector_shuffle(SpirVVectorShuffle {
+                    vec_type,
+                    vec1,
+                    vec2,
+                    mask,
+                })
+            }
+            AirValue::InsertVal(air_insert_val) => {
+                let result_type = Self::get_air_type_from_value(module, air_insert_val.value1);
+                let result_type = Self::parse_air_type(builder, module, result_type);
+
+                let value1 = *value_list.get(&air_insert_val.value1).unwrap();
+                let value2 = *value_list.get(&air_insert_val.value2).unwrap();
+
+                builder.new_composite_insert(SpirVCompositeInsert {
+                    type_id: result_type,
+                    object_id: value2,
+                    composite_id: value1,
+                    indices: vec![air_insert_val.insert_value_idx as u32],
+                })
+            }
+            _ => todo!("{:?}", value),
+        }
+    }
+
+    pub fn parse_air_function(
+        builder: &mut SpirVBuilder,
+        module: &AirModule,
+        air_signature: AirFunctionSignatureId,
+        air_entry_points: &Vec<AirValueId>,
+        spirv_entry_point_outputs: &Vec<SpirVVariableId>,
+        spirv_entry_point_inputs: &Vec<SpirVVariableId>,
+        global_variables: &HashMap<AirGlobalVariableId, SpirVVariableId>,
+        constants: &HashMap<AirConstantId, SpirVVariableId>,
+    ) -> SpirVVariableId {
+        let mut air_function_body = None;
+        for i in &module.function_bodies {
+            if i.signature == air_signature {
+                air_function_body = Some(i);
+            }
+        }
+
+        let air_function_body = air_function_body.unwrap();
+
+        builder.new_basic_block();
+
+        let mut value_list: HashMap<AirValueId, SpirVVariableId> = HashMap::new();
+
+        let mut count = 0;
+        for i in air_entry_points {
+            value_list.insert(*i, spirv_entry_point_inputs[count]);
+            count += 1;
+        }
+
+        for (id, spirv_value) in global_variables {
+            value_list.insert(AirValueId(id.0), *spirv_value);
+        }
+
+        for (id, spirv_value) in constants {
+            for i in 0..module.value_list.len() {
+                if module.value_list[i] == AirValue::Constant(*id) {
+                    value_list.insert(AirValueId(i as u64), *spirv_value);
+                }
+            }
+        }
+
+        for i in &air_function_body.contents {
+            let value = Self::parse_air_value(builder, module, *i, &value_list);
+
+            value_list.insert(*i, value);
+        }
+
+        todo!()
     }
 
     pub fn shader_variable_to_spirv_variable(
@@ -551,8 +770,6 @@ impl AirToSpirV {
                     )
                 }
             };
-
-            dbg!("{:?}", vertex_properties);
 
             // TODO: Make a more elegant solution if a string isn't found.
             let mut starts_at_two = false;

@@ -46,7 +46,7 @@ mod tests {
     fn air_to_spirv() -> Result<()> {
         let mut input = super::air_parser::Parser::new(std::fs::read("test-files/test.air")?)?;
 
-        let mut conversion = AirToSpirV::new(input.start()?);
+        let mut conversion = AirToSpirV::new(dbg!(input.start()?));
         conversion.start()?;
 
         Ok(())

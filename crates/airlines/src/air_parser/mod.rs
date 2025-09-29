@@ -181,17 +181,18 @@ impl Parser {
                             AirTypeId(record.fields[0]),
                         )),
                         TypeCode::FUNCTION => {
-                            let mut params: Vec<AirTypeId> = vec![];
+                            let mut param_types: Vec<AirTypeId> = vec![];
 
                             for i in 2..record.fields.len() {
                                 let i = AirTypeId(record.fields[i]);
-                                params.push(i);
+                                param_types.push(i);
                             }
 
                             result.push(AirType::Function(AirFunctionType {
                                 vararg: record.fields[0],
                                 return_type: AirTypeId(record.fields[1]),
-                                params,
+                                param_types,
+                                param_values: vec![],
                             }));
                         }
                         TypeCode::METADATA => result.push(AirType::Metadata),
@@ -398,6 +399,20 @@ impl Parser {
         Ok(AirConstantValue::Array(contents))
     }
 
+    pub fn decode_sign_rotated_value(v: u64) -> u64 {
+        if v & 1 == 0 {
+            return v >> 1;
+        }
+
+        if v != 1 {
+            unsafe {
+                return 0_u64.unchecked_sub(v >> 1);
+            }
+        }
+
+        return 1_u64 << 63;
+    }
+
     pub fn parse_constants(&mut self, module: &mut AirModule) -> Result<()> {
         let mut content = self.bitstream.next();
         let mut current_type = AirTypeId(0);
@@ -422,7 +437,9 @@ impl Parser {
                                 AirConstantId(module.max_constants_id),
                                 AirConstant {
                                     ty: current_type.clone(),
-                                    value: AirConstantValue::Integer(record.fields[0]),
+                                    value: AirConstantValue::Integer(
+                                        Self::decode_sign_rotated_value(record.fields[0]),
+                                    ),
                                 },
                             );
 
@@ -462,7 +479,7 @@ impl Parser {
                         ConstantsCode::AGGREGATE => {
                             let mut contents = vec![];
                             for i in record.fields {
-                                contents.push(AirConstantId(i));
+                                contents.push(AirValueId(i));
                             }
 
                             let _ = module.constants.insert(
@@ -492,6 +509,7 @@ impl Parser {
                             let _ = module
                                 .constants
                                 .insert(AirConstantId(module.max_constants_id), data);
+
                             skip_add_one_in_settype = true;
 
                             module.assign_value_to_value_list(
@@ -678,7 +696,6 @@ impl Parser {
                                 .push(UndiscoveredData::INDEX_OFFSET(record.fields[0]));
                         }
                         MetadataCodes::VALUE => {
-                            let ty = AirTypeId(record.fields[0]);
                             let constant = AirMetadataConstant::Value(
                                 result.value_list[record.fields[1] as usize].clone(),
                             );
@@ -787,16 +804,20 @@ impl Parser {
         let mut content = self.bitstream.next();
 
         let id = result.current_function_local_id as usize;
-        let function_signature = &result.function_signatures[id];
+        let function_signature = &mut result.function_signatures[id];
         let mut contents: Vec<AirValueId> = vec![];
 
         let mut count = 0;
-        for i in &function_signature.ty.params {
+        for i in &function_signature.ty.param_types {
             result.value_list.push(AirValue::Argument(AirLocal {
                 id: count,
                 type_id: *i,
                 value: None,
             }));
+            function_signature
+                .ty
+                .param_values
+                .push(AirValueId(result.value_list.len() as u64 - 1));
             count += 1;
         }
 

@@ -953,7 +953,7 @@ pub enum GetElementPtrOptionalFlags {
 }
 
 bitflags! {
-    #[derive(Debug, Default, Clone)]
+    #[derive(Debug, Default, Clone, PartialEq)]
     pub struct GEPNoWrapFlags: u64 {
         const InBoundsFlag = (1 << 0);
         const NUSWFlag = (1 << 1);
