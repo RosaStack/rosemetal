@@ -34,6 +34,7 @@ pub enum SpirVOp {
     CompositeInsert(SpirVVariableId, SpirVCompositeInsert),
     CompositeConstruct(SpirVVariableId, SpirVCompositeConstruct),
     Return,
+    ReturnValue(SpirVVariableId),
     Function(SpirVVariableId, SpirVFunction),
     BitCast(SpirVVariableId, SpirVBitCast),
     VectorShuffle(SpirVVariableId, SpirVVectorShuffle),

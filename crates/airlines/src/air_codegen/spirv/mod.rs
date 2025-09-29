@@ -7,7 +7,8 @@ use crate::{
     air_parser::{
         AirConstant, AirConstantId, AirConstantValue, AirFile, AirFunctionSignature,
         AirFunctionSignatureId, AirFunctionType, AirGlobalVariableId, AirItem, AirMetadataConstant,
-        AirMetadataNamedNode, AirModule, AirType, AirTypeId, AirValue, AirValueId, AirVectorType,
+        AirMetadataNamedNode, AirModule, AirReturn, AirType, AirTypeId, AirValue, AirValueId,
+        AirVectorType,
     },
     spirv_builder::SpirVBuilder,
     spirv_parser::{
@@ -436,6 +437,7 @@ impl AirToSpirV {
         module: &AirModule,
         value_id: AirValueId,
         value_list: &HashMap<AirValueId, SpirVVariableId>,
+        spirv_entry_point_outputs: &Vec<SpirVVariableId>,
     ) -> SpirVVariableId {
         let value = module.value_list.get(value_id.0 as usize).unwrap();
 
@@ -506,6 +508,15 @@ impl AirToSpirV {
                     indices: vec![air_insert_val.insert_value_idx as u32],
                 })
             }
+            AirValue::Return(air_return) => {
+                if spirv_entry_point_outputs.len() == 0 {
+                    return builder.new_return(Some(*value_list.get(&air_return.value).unwrap()));
+                }
+
+                todo!("{:?}", builder.module.type_table.get(&SpirVVariableId(73)));
+
+                todo!()
+            }
             _ => todo!("{:?}", value),
         }
     }
@@ -552,7 +563,8 @@ impl AirToSpirV {
         }
 
         for i in &air_function_body.contents {
-            let value = Self::parse_air_value(builder, module, *i, &value_list);
+            let value =
+                Self::parse_air_value(builder, module, *i, &value_list, spirv_entry_point_outputs);
 
             value_list.insert(*i, value);
         }
