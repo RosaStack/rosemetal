@@ -1,35 +1,33 @@
-use std::{collections::HashMap, default, hash::Hash, thread::current};
+use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
 
 use crate::{
-    air_codegen::spirv,
     air_parser::{
-        AirConstant, AirConstantId, AirConstantValue, AirFile, AirFunctionSignature,
-        AirFunctionSignatureId, AirFunctionType, AirGlobalVariableId, AirItem, AirMetadataConstant,
-        AirMetadataNamedNode, AirModule, AirReturn, AirType, AirTypeId, AirValue, AirValueId,
-        AirVectorType,
+        AirConstant, AirConstantId, AirConstantValue, AirFile, AirFunctionSignatureId,
+        AirGlobalVariableId, AirItem, AirMetadataConstant, AirMetadataNamedNode, AirModule,
+        AirType, AirValue, AirValueId, AirVectorType,
     },
     spirv_builder::SpirVBuilder,
     spirv_parser::{
         SpirVAccessChain, SpirVAddressingModel, SpirVBitCast, SpirVBuiltIn, SpirVCapability,
         SpirVCompositeExtract, SpirVCompositeInsert, SpirVConstant, SpirVConstantComposite,
-        SpirVConstantValue, SpirVDecorate, SpirVDecorateType, SpirVEntryPoint, SpirVExecutionModel,
-        SpirVLoad, SpirVMemoryModel, SpirVMemoryOperands, SpirVOp, SpirVStorageClass, SpirVStore,
+        SpirVConstantValue, SpirVDecorate, SpirVDecorateType, SpirVExecutionModel, SpirVLoad,
+        SpirVMemoryModel, SpirVMemoryOperands, SpirVModule, SpirVStorageClass, SpirVStore,
         SpirVType, SpirVVariableId, SpirVVectorShuffle,
     },
 };
 
 pub struct AirToSpirV {
-    input: AirFile,
-    output: Vec<SpirVOp>,
+    pub input: AirFile,
+    pub output: SpirVModule,
 }
 
 impl AirToSpirV {
     pub fn new(input: AirFile) -> Self {
         Self {
             input,
-            output: vec![],
+            output: SpirVModule::default(),
         }
     }
 
@@ -344,6 +342,8 @@ impl AirToSpirV {
             }
             None => {}
         }
+
+        self.output = builder.module;
 
         Ok(())
     }
