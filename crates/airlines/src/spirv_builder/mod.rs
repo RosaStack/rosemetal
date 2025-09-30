@@ -2,10 +2,11 @@ use crate::spirv_parser::{
     FunctionControl, SpirVAccessChain, SpirVAddressingModel, SpirVAlloca, SpirVBitCast, SpirVBlock,
     SpirVCapability, SpirVCompositeExtract, SpirVCompositeInsert, SpirVConstant,
     SpirVConstantComposite, SpirVDecorate, SpirVEntryPoint, SpirVExecutionModel, SpirVFunction,
-    SpirVLoad, SpirVMemoryModel, SpirVModule, SpirVName, SpirVOp, SpirVStorageClass, SpirVStore,
-    SpirVType, SpirVVariableId, SpirVVectorShuffle,
+    SpirVLoad, SpirVMemoryModel, SpirVModule, SpirVName, SpirVOp, SpirVOpCode, SpirVStorageClass,
+    SpirVStore, SpirVType, SpirVVariableId, SpirVVectorShuffle,
 };
 
+#[derive(Debug, Default, Clone)]
 pub struct SpirVBuilder {
     pub module: SpirVModule,
     current_variable_id: u32,
@@ -509,5 +510,43 @@ impl SpirVBuilder {
         self.block_list.clear();
 
         func
+    }
+
+    pub fn assemble(&self) -> Vec<u32> {
+        let mut result: Vec<u32> = vec![];
+
+        // Magic Number.
+        result.push(0x7230203);
+
+        // SPIR-V Version (1.0).
+        result.push(u32::from_le_bytes([0_u8, 1_u8, 0_u8, 0_u8]));
+
+        // Generator (0, for now).
+        result.push(0);
+
+        // Schema (also 0, for now).
+        result.push(0);
+
+        for i in &self.module.operands {
+            result.extend(self.assemble_operand(i));
+        }
+
+        result
+    }
+
+    pub fn assemble_operand(&self, op: &SpirVOp) -> Vec<u32> {
+        match op {
+            SpirVOp::Capability(capability) => {
+                vec![SpirVOpCode::Capability as u32, *capability as u32]
+            }
+            SpirVOp::MemoryModel(addressing_model, memory_model) => {
+                vec![
+                    SpirVOpCode::MemoryModel as u32,
+                    *addressing_model as u32,
+                    *memory_model as u32,
+                ]
+            }
+            _ => todo!("{:?}", op),
+        }
     }
 }

@@ -49,6 +49,8 @@ mod tests {
         let mut conversion = AirToSpirV::new(dbg!(input.start()?));
         conversion.start()?;
 
+        let assembly = conversion.output.assemble();
+
         Ok(())
     }
 

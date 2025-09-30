@@ -20,14 +20,14 @@ use crate::{
 
 pub struct AirToSpirV {
     pub input: AirFile,
-    pub output: SpirVModule,
+    pub output: SpirVBuilder,
 }
 
 impl AirToSpirV {
     pub fn new(input: AirFile) -> Self {
         Self {
             input,
-            output: SpirVModule::default(),
+            output: SpirVBuilder::default(),
         }
     }
 
@@ -343,7 +343,7 @@ impl AirToSpirV {
             None => {}
         }
 
-        self.output = builder.module;
+        self.output = builder;
 
         Ok(())
     }
