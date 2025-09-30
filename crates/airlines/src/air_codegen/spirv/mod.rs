@@ -13,10 +13,10 @@ use crate::{
     spirv_builder::SpirVBuilder,
     spirv_parser::{
         SpirVAccessChain, SpirVAddressingModel, SpirVBitCast, SpirVBuiltIn, SpirVCapability,
-        SpirVCompositeInsert, SpirVConstant, SpirVConstantComposite, SpirVConstantValue,
-        SpirVDecorate, SpirVDecorateType, SpirVEntryPoint, SpirVExecutionModel, SpirVLoad,
-        SpirVMemoryModel, SpirVMemoryOperands, SpirVOp, SpirVStorageClass, SpirVType,
-        SpirVVariableId, SpirVVectorShuffle,
+        SpirVCompositeExtract, SpirVCompositeInsert, SpirVConstant, SpirVConstantComposite,
+        SpirVConstantValue, SpirVDecorate, SpirVDecorateType, SpirVEntryPoint, SpirVExecutionModel,
+        SpirVLoad, SpirVMemoryModel, SpirVMemoryOperands, SpirVOp, SpirVStorageClass, SpirVStore,
+        SpirVType, SpirVVariableId, SpirVVectorShuffle,
     },
 };
 
@@ -322,8 +322,8 @@ impl AirToSpirV {
                         &module,
                         function_signature.global_id,
                         &air_arguments,
-                        &spirv_inputs,
                         &spirv_outputs,
+                        &spirv_inputs,
                         &global_variables,
                         &constants,
                     );
@@ -340,20 +340,10 @@ impl AirToSpirV {
                             spirv_arguments,
                         ),
                     );
-
-                    panic!(
-                        "{:?}",
-                        builder
-                            .module
-                            .entry_point_table
-                            .get(entry_points.get(&function_signature.global_id).unwrap())
-                    );
                 }
             }
             None => {}
         }
-
-        todo!("{:#?}", builder.module);
 
         Ok(())
     }
@@ -513,9 +503,52 @@ impl AirToSpirV {
                     return builder.new_return(Some(*value_list.get(&air_return.value).unwrap()));
                 }
 
-                todo!("{:?}", builder.module.type_table.get(&SpirVVariableId(73)));
+                let get_return_ty = Self::get_air_type_from_value(module, air_return.value);
+                let spirv_return_ty = Self::parse_air_type(builder, module, get_return_ty);
+                let spirv_return_pointer_ty = builder.new_type(SpirVType::Pointer(
+                    SpirVStorageClass::Private,
+                    spirv_return_ty,
+                ));
 
-                todo!()
+                let load = builder.new_load(SpirVLoad {
+                    type_id: spirv_return_ty,
+                    pointer_id: spirv_return_pointer_ty,
+                    memory_operands: SpirVMemoryOperands::None,
+                });
+
+                let index_zero_ty = builder.new_type(SpirVType::Int(32, true));
+                let index_zero = builder.new_constant(SpirVConstant {
+                    type_id: index_zero_ty,
+                    value: SpirVConstantValue::SignedInteger(0),
+                });
+
+                let mut count = 0;
+                for i in spirv_entry_point_outputs {
+                    let spirv_pointer_ty = builder.find_operand_type_id(*i);
+                    let spirv_value_ty = builder.find_pointer_type(spirv_pointer_ty);
+
+                    let spirv_value = builder.new_composite_extract(SpirVCompositeExtract {
+                        type_id: spirv_value_ty,
+                        composite_id: load,
+                        indices: vec![count],
+                    });
+
+                    let access = builder.new_access_chain(SpirVAccessChain {
+                        type_id: spirv_pointer_ty,
+                        base_id: *i,
+                        indices: vec![index_zero],
+                    });
+
+                    builder.new_store(SpirVStore {
+                        pointer_id: access,
+                        object_id: spirv_value,
+                        memory_operands: SpirVMemoryOperands::None,
+                    });
+
+                    count += 1;
+                }
+
+                builder.new_return(None)
             }
             _ => todo!("{:?}", value),
         }
@@ -537,6 +570,20 @@ impl AirToSpirV {
                 air_function_body = Some(i);
             }
         }
+        let air_signature = module.get_function_signature(air_signature).unwrap();
+
+        let return_type = Self::parse_air_type(
+            builder,
+            module,
+            &module.types[air_signature.ty.return_type.0 as usize],
+        );
+
+        let function_type = builder.new_type(SpirVType::Function(return_type, vec![]));
+        let func = builder.new_function(
+            &module.string_table[air_signature.name.0 as usize].content,
+            function_type,
+            return_type,
+        );
 
         let air_function_body = air_function_body.unwrap();
 
@@ -569,7 +616,7 @@ impl AirToSpirV {
             value_list.insert(*i, value);
         }
 
-        todo!()
+        builder.end_function(func)
     }
 
     pub fn shader_variable_to_spirv_variable(

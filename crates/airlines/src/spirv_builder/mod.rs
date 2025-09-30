@@ -1,8 +1,9 @@
 use crate::spirv_parser::{
     FunctionControl, SpirVAccessChain, SpirVAddressingModel, SpirVAlloca, SpirVBitCast, SpirVBlock,
-    SpirVCapability, SpirVCompositeInsert, SpirVConstant, SpirVConstantComposite, SpirVDecorate,
-    SpirVEntryPoint, SpirVExecutionModel, SpirVFunction, SpirVLoad, SpirVMemoryModel, SpirVModule,
-    SpirVName, SpirVOp, SpirVStorageClass, SpirVType, SpirVVariableId, SpirVVectorShuffle,
+    SpirVCapability, SpirVCompositeExtract, SpirVCompositeInsert, SpirVConstant,
+    SpirVConstantComposite, SpirVDecorate, SpirVEntryPoint, SpirVExecutionModel, SpirVFunction,
+    SpirVLoad, SpirVMemoryModel, SpirVModule, SpirVName, SpirVOp, SpirVStorageClass, SpirVStore,
+    SpirVType, SpirVVariableId, SpirVVectorShuffle,
 };
 
 pub struct SpirVBuilder {
@@ -45,6 +46,31 @@ impl SpirVBuilder {
         }
     }
 
+    pub fn id_mut_check<'a>(i: &'a mut SpirVOp, id: SpirVVariableId) -> Option<&'a mut SpirVOp> {
+        match i {
+            SpirVOp::Type(nid, ..)
+            | SpirVOp::Constant(nid, ..)
+            | SpirVOp::ConstantComposite(nid, ..)
+            | SpirVOp::Alloca(nid, ..)
+            | SpirVOp::Block(nid, ..)
+            | SpirVOp::Load(nid, ..)
+            | SpirVOp::AccessChain(nid, ..)
+            | SpirVOp::CompositeExtract(nid, ..)
+            | SpirVOp::CompositeInsert(nid, ..)
+            | SpirVOp::CompositeConstruct(nid, ..)
+            | SpirVOp::Function(nid, ..)
+            | SpirVOp::BitCast(nid, ..)
+            | SpirVOp::VectorShuffle(nid, ..) => {
+                if *nid == id {
+                    return Some(i);
+                }
+
+                None
+            }
+            _ => None,
+        }
+    }
+
     pub fn find_operand_with_id<'a>(&'a self, id: SpirVVariableId) -> &'a SpirVOp {
         for i in &self.block_list {
             for j in &i.instructions {
@@ -63,6 +89,42 @@ impl SpirVBuilder {
         }
 
         panic!("ID {:?} not found.", id)
+    }
+
+    pub fn find_mut_operand_with_id<'a>(&'a mut self, id: SpirVVariableId) -> &'a mut SpirVOp {
+        for i in &mut self.block_list {
+            for j in &mut i.instructions {
+                match Self::id_mut_check(j, id) {
+                    Some(s) => return s,
+                    None => {}
+                }
+            }
+        }
+
+        for i in &mut self.module.operands {
+            match Self::id_mut_check(i, id) {
+                Some(s) => return s,
+                None => {}
+            }
+        }
+
+        panic!("ID {:?} not found.", id)
+    }
+
+    pub fn find_operand_type_id<'a>(&'a self, id: SpirVVariableId) -> SpirVVariableId {
+        let find_id = self.find_operand_with_id(id);
+
+        match find_id {
+            SpirVOp::Alloca(_, alloca) => alloca.type_id,
+            _ => todo!(),
+        }
+    }
+
+    pub fn find_pointer_type<'a>(&'a self, id: SpirVVariableId) -> SpirVVariableId {
+        match self.module.type_table.get(&id).unwrap() {
+            SpirVType::Pointer(_, fid) => *fid,
+            _ => id,
+        }
     }
 
     pub fn next_id(&mut self) -> SpirVVariableId {
@@ -287,7 +349,6 @@ impl SpirVBuilder {
         name: &str,
         function_type: SpirVVariableId,
         return_type: SpirVVariableId,
-        contents: Vec<SpirVOp>,
     ) -> SpirVVariableId {
         let var = SpirVVariableId(self.current_variable_id);
 
@@ -303,7 +364,7 @@ impl SpirVBuilder {
             function_type_id: function_type,
             return_type_id: return_type,
             function_control: FunctionControl::None,
-            instructions: contents,
+            instructions: vec![],
         };
 
         self.module.functions_table.insert(var, function.clone());
@@ -351,6 +412,16 @@ impl SpirVBuilder {
         id
     }
 
+    pub fn new_store(&mut self, store: SpirVStore) -> SpirVVariableId {
+        let id = self.new_id();
+
+        let current_block = self.block_list.last_mut().unwrap();
+
+        current_block.instructions.push(SpirVOp::Store(store));
+
+        id
+    }
+
     pub fn new_vector_shuffle(&mut self, vector_shuffle: SpirVVectorShuffle) -> SpirVVariableId {
         let id = self.new_id();
 
@@ -359,6 +430,21 @@ impl SpirVBuilder {
         current_block
             .instructions
             .push(SpirVOp::VectorShuffle(id, vector_shuffle));
+
+        id
+    }
+
+    pub fn new_composite_extract(
+        &mut self,
+        composite_extract: SpirVCompositeExtract,
+    ) -> SpirVVariableId {
+        let id = self.new_id();
+
+        let current_block = self.block_list.last_mut().unwrap();
+
+        current_block
+            .instructions
+            .push(SpirVOp::CompositeExtract(id, composite_extract));
 
         id
     }
@@ -395,5 +481,33 @@ impl SpirVBuilder {
         let id = self.current_variable_id;
         self.current_variable_id += 1;
         SpirVVariableId(id)
+    }
+
+    pub fn end_function(&mut self, func: SpirVVariableId) -> SpirVVariableId {
+        self.block_list
+            .last_mut()
+            .unwrap()
+            .instructions
+            .push(SpirVOp::FunctionEnd);
+
+        let id = self.new_id();
+        let block = self.block_list.last().unwrap().clone();
+
+        self.module
+            .functions_table
+            .get_mut(&func)
+            .unwrap()
+            .instructions
+            .push(SpirVOp::Block(id, block.clone()));
+
+        let func_operand = self.find_mut_operand_with_id(func);
+        match func_operand {
+            SpirVOp::Function(_, function) => function.instructions.push(SpirVOp::Block(id, block)),
+            _ => todo!(),
+        }
+
+        self.block_list.clear();
+
+        func
     }
 }
