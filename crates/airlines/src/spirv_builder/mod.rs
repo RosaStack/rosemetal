@@ -556,7 +556,7 @@ impl SpirVBuilder {
                 ],
                 _ => todo!("{:?}", ty),
             },
-            SpirVOp::Constant(id, constant) => vec![SpirVOpCode::Constant as u32]
+            SpirVOp::Constant(id, constant) => vec![SpirVOpCode::Constant as u32],
             _ => todo!("{:?}", op),
         }
     }
