@@ -277,7 +277,7 @@ impl SpirVBuilder {
             member_names: names_ty,
         };
 
-        let final_struct_ty = SpirVType::Struct(elements_ty);
+        let final_struct_ty = SpirVType::Struct(elements_ty.clone());
 
         for (id, table_ty) in &self.module.type_table {
             if table_ty == &final_struct_ty {
@@ -302,6 +302,8 @@ impl SpirVBuilder {
         }
 
         self.module.type_table.insert(var, final_struct_ty);
+
+        self.module.operands.push(SpirVOp::Struct(var, elements_ty));
 
         self.current_variable_id += 1;
 
@@ -590,7 +592,7 @@ impl SpirVBuilder {
                         Self::new_opcode(4, SpirVOpCode::TypeArray),
                         id.0,
                         type_id.0,
-                        *size,
+                        size.0,
                     ]
                 }
                 SpirVType::Function(return_type_id, arguments) => {
@@ -611,28 +613,48 @@ impl SpirVBuilder {
                 }
                 _ => todo!("{:?}", ty),
             },
-            SpirVOp::Constant(id, constant) => vec![
-                Self::new_opcode(4, SpirVOpCode::Constant),
-                constant.type_id.0,
-                id.0,
-                match constant.value {
-                    SpirVConstantValue::SignedInteger(int) => {
-                        u32::from_le_bytes((int as i32).to_le_bytes())
-                    }
-                    SpirVConstantValue::UnsignedInteger(int) => int as u32,
-                    SpirVConstantValue::Float32(float) => u32::from_le_bytes(float.to_le_bytes()),
-                    SpirVConstantValue::Float64(float) => {
-                        u32::from_le_bytes((float as f32).to_le_bytes())
-                    }
-                    SpirVConstantValue::Undefined | SpirVConstantValue::Null => {
-                        // Set as '0' for now...
-                        // Please don't make this a permanent
-                        // solution.
-                        0
-                    }
-                    _ => todo!(),
-                },
-            ],
+            SpirVOp::Constant(id, constant) => {
+                let mut constant_words =
+                    match constant.value {
+                        SpirVConstantValue::SignedInteger(int) => {
+                            vec![u32::from_le_bytes((int as i32).to_le_bytes())]
+                        }
+                        SpirVConstantValue::UnsignedInteger(int) => vec![int as u32],
+                        SpirVConstantValue::Float32(float) => {
+                            vec![u32::from_le_bytes(float.to_le_bytes())]
+                        }
+                        SpirVConstantValue::Float64(float) => {
+                            let fb = float.to_le_bytes();
+
+                            vec![
+                                u32::from_le_bytes([fb[0], fb[1], fb[2], fb[3]]),
+                                u32::from_le_bytes([fb[4], fb[5], fb[6], fb[7]]),
+                            ]
+                        }
+                        SpirVConstantValue::Undefined | SpirVConstantValue::Null => {
+                            // Set as '0' for now...
+                            // Please don't make this a permanent
+                            // solution.
+                            match self.module.type_table.get(&constant.type_id).unwrap() {
+                                SpirVType::Float(width) | SpirVType::Int(width, _) => {
+                                    if *width == 64 { vec![0, 0] } else { vec![0] }
+                                }
+                                _ => vec![0],
+                            }
+                        }
+                        _ => todo!(),
+                    };
+
+                let mut result = vec![
+                    Self::new_opcode(3 + constant_words.len() as u32, SpirVOpCode::Constant),
+                    constant.type_id.0,
+                    id.0,
+                ];
+
+                result.extend(constant_words);
+
+                result
+            }
             SpirVOp::ConstantComposite(id, composite) => {
                 let mut result = vec![
                     Self::new_opcode(
@@ -896,6 +918,16 @@ impl SpirVBuilder {
 
                 result
             }
+            SpirVOp::Struct(id, elements) => {
+                let mut result = vec![
+                    Self::new_opcode(2 + elements.len() as u32, SpirVOpCode::TypeStruct),
+                    id.0,
+                ];
+
+                result.extend(elements.iter().map(|element| element.0).collect::<Vec<_>>());
+
+                result
+            }
             _ => todo!("{:?}", op),
         }
     }
@@ -981,7 +1013,7 @@ impl SpirVBuilder {
                             result += &format!("OpTypeInt {:?} {:?}", width, signedness)
                         }
                         SpirVType::Array(type_id, size) => {
-                            result += &format!("OpTypeArray %{:?} {:?}", type_id.0, size)
+                            result += &format!("OpTypeArray %{:?} %{:?}", type_id.0, size.0)
                         }
                         SpirVType::Function(type_id, arguments) => {
                             result += &format!(
@@ -1006,7 +1038,7 @@ impl SpirVBuilder {
                         id.0, constant.type_id.0, constant.value
                     );
                 }
-                SpirVOp::Name(id, name) => result += &format!("OpName %{:?} {}", id.0, name),
+                SpirVOp::Name(id, name) => result += &format!("OpName %{:?} \"{}\"", id.0, name),
                 SpirVOp::ConstantComposite(id, composite) => {
                     result += &format!(
                         "%{:?} = OpConstantComposite %{:?} {:?}",
@@ -1020,7 +1052,34 @@ impl SpirVBuilder {
                     )
                 }
                 SpirVOp::MemberName(id, index, name) => {
-                    result += &format!("OpMemberName %{:?} {:?} {}", id.0, index, name)
+                    result += &format!("OpMemberName %{:?} {:?} \"{}\"", id.0, index, name)
+                }
+                SpirVOp::Alloca(id, alloca) => {
+                    result += &format!(
+                        "%{:?} = OpVariable %{:?} {:?}",
+                        id.0, alloca.type_id.0, alloca.storage_class
+                    );
+
+                    match alloca.initializer {
+                        Some(init) => result += &format!(" %{:?}", init.0),
+                        None => {}
+                    }
+                }
+                SpirVOp::Decorate(id, decorate) => {
+                    result += &format!("OpDecorate %{:?} {:?}", id.0, decorate)
+                }
+                SpirVOp::MemberDecorate(id, index, decorate) => {
+                    result += &format!("OpDecorate %{:?} {:?} {:?}", id.0, index, decorate)
+                }
+                SpirVOp::Struct(id, elements) => {
+                    result += &format!(
+                        "%{:?} = OpTypeStruct {:?}",
+                        id.0,
+                        elements
+                            .iter()
+                            .map(|x| format!("%{:?}", x.0))
+                            .collect::<Vec<_>>()
+                    )
                 }
                 // _ => todo!("{i:?}"),
                 _ => {}

@@ -38,6 +38,7 @@ pub enum SpirVOp {
     Function(SpirVVariableId, SpirVFunction),
     BitCast(SpirVVariableId, SpirVBitCast),
     VectorShuffle(SpirVVariableId, SpirVVectorShuffle),
+    Struct(SpirVVariableId, Vec<SpirVVariableId>),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -149,7 +150,7 @@ pub enum SpirVType {
     Float(u32),
     Int(u32, bool),
     Vector(SpirVVariableId, u32),
-    Array(SpirVVariableId, u32),
+    Array(SpirVVariableId, SpirVVariableId),
     Pointer(SpirVStorageClass, SpirVVariableId),
     Struct(Vec<SpirVVariableId>),
 }

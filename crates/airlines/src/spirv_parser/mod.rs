@@ -462,7 +462,7 @@ impl Parser {
             SpirVOpCode::TypeArray => {
                 let target_id = SpirVVariableId(self.advance()?);
                 let array_type = SpirVVariableId(self.advance()?);
-                let length = self.advance()?;
+                let length = SpirVVariableId(self.advance()?);
 
                 self.module
                     .type_table

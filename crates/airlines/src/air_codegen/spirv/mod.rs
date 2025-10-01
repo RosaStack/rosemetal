@@ -72,8 +72,13 @@ impl AirToSpirV {
                 let ty = &module.types[array_ty.element_type.0 as usize];
 
                 let element_ty = Self::parse_air_type(builder, module, ty);
+                let u32_ty = builder.new_type(SpirVType::Int(32, false));
+                let length = builder.new_constant(SpirVConstant {
+                    type_id: u32_ty,
+                    value: SpirVConstantValue::UnsignedInteger(array_ty.size),
+                });
 
-                builder.new_type(SpirVType::Array(element_ty, array_ty.size as u32))
+                builder.new_type(SpirVType::Array(element_ty, length))
             }
             AirType::Vector(vector_ty) => {
                 let ty = &module.types[vector_ty.element_type.0 as usize];
@@ -113,7 +118,7 @@ impl AirToSpirV {
             AirConstantValue::Undefined | AirConstantValue::Null | AirConstantValue::Poison => {
                 let ty = builder.module.type_table.get(&type_id).unwrap().clone();
                 match ty {
-                    SpirVType::Vector(ty_id, size) | SpirVType::Array(ty_id, size) => {
+                    SpirVType::Vector(ty_id, size) => {
                         let null_const = builder.new_constant(SpirVConstant {
                             type_id: ty_id,
                             value: SpirVConstantValue::Null,
@@ -122,6 +127,19 @@ impl AirToSpirV {
                         builder.new_constant_composite(SpirVConstantComposite {
                             type_id: type_id,
                             values: vec![null_const; size as usize],
+                        })
+                    }
+                    SpirVType::Array(ty_id, size) => {
+                        let null_const = builder.new_constant(SpirVConstant {
+                            type_id: ty_id,
+                            value: SpirVConstantValue::Null,
+                        });
+
+                        let length = Self::spirv_constant_to_literal(builder, size) as usize;
+
+                        builder.new_constant_composite(SpirVConstantComposite {
+                            type_id: type_id,
+                            values: vec![null_const; length],
                         })
                     }
                     _ => builder.new_constant(SpirVConstant {
@@ -658,6 +676,13 @@ impl AirToSpirV {
         builder.end_function(func)
     }
 
+    pub fn spirv_constant_to_literal(builder: &mut SpirVBuilder, id: SpirVVariableId) -> u64 {
+        match builder.module.constants_table.get(&id).unwrap().value {
+            SpirVConstantValue::UnsignedInteger(int) => int,
+            _ => todo!(),
+        }
+    }
+
     pub fn shader_variable_to_spirv_variable(
         builder: &mut SpirVBuilder,
         location: &mut u32,
@@ -692,7 +717,14 @@ impl AirToSpirV {
                 }
                 ShaderOutputType::Position => {
                     let float = builder.new_type(SpirVType::Float(32));
-                    let clip_cull_array = builder.new_type(SpirVType::Array(float, 1));
+
+                    let u32_ty = builder.new_type(SpirVType::Int(32, false));
+                    let array_index = builder.new_constant(SpirVConstant {
+                        type_id: u32_ty,
+                        value: SpirVConstantValue::UnsignedInteger(1),
+                    });
+                    let clip_cull_array = builder.new_type(SpirVType::Array(float, array_index));
+
                     let spirv_position_type = builder.new_struct_type(
                         &element_info.name.clone(),
                         false,

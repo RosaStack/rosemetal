@@ -4,7 +4,10 @@ use anyhow::Result;
 
 use crate::{
     air_builder::AirBuilder,
-    air_parser::{AirArrayType, AirFunctionType, AirStructType, AirType, AirTypeId, AirVectorType},
+    air_parser::{
+        AirArrayType, AirConstant, AirFunctionType, AirStructType, AirType, AirTypeId,
+        AirVectorType,
+    },
     spirv_parser::{self, SpirVModule, SpirVOp, SpirVType, SpirVVariableId},
 };
 
@@ -55,7 +58,7 @@ impl SpirVToAir {
                     SpirVType::Void => self.output.new_type(AirType::Void)?,
                     SpirVType::Array(type_id, size) => {
                         self.output.new_type(AirType::Array(AirArrayType {
-                            size: *size as u64,
+                            size: todo!("Make SPIR-V Constant to Literal function."),
                             element_type: *types.get(type_id).unwrap(),
                         }))?
                     }
