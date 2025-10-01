@@ -537,15 +537,26 @@ impl SpirVBuilder {
     pub fn assemble_operand(&self, op: &SpirVOp) -> Vec<u32> {
         match op {
             SpirVOp::Capability(capability) => {
-                vec![SpirVOpCode::Capability as u32, *capability as u32]
+                vec![2, SpirVOpCode::Capability as u32, *capability as u32]
             }
             SpirVOp::MemoryModel(addressing_model, memory_model) => {
                 vec![
+                    3,
                     SpirVOpCode::MemoryModel as u32,
                     *addressing_model as u32,
                     *memory_model as u32,
                 ]
             }
+            SpirVOp::Type(id, ty) => match ty {
+                SpirVType::Int(width, signedness) => vec![
+                    SpirVOpCode::TypeInt as u32,
+                    id.0,
+                    *width,
+                    if *signedness { 1 } else { 0 },
+                ],
+                _ => todo!("{:?}", ty),
+            },
+            SpirVOp::Constant(id, constant) => vec![SpirVOpCode::Constant as u32]
             _ => todo!("{:?}", op),
         }
     }
