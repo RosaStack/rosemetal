@@ -601,12 +601,14 @@ impl SpirVBuilder {
                         id.0,
                         return_type_id.0,
                     ];
+
                     result.extend(arguments.iter().map(|value| value.0).collect::<Vec<_>>());
                     result
                 }
                 SpirVType::Pointer(storage_class, type_id) => {
                     vec![
                         Self::new_opcode(4, SpirVOpCode::TypePointer),
+                        id.0,
                         *storage_class as u32,
                         type_id.0,
                     ]
@@ -742,7 +744,7 @@ impl SpirVBuilder {
             }
             SpirVOp::Function(id, function) => {
                 let mut result = vec![
-                    Self::new_opcode(4, SpirVOpCode::Function),
+                    Self::new_opcode(5, SpirVOpCode::Function),
                     function.return_type_id.0,
                     id.0,
                     function.function_control as u32,
@@ -890,12 +892,7 @@ impl SpirVBuilder {
                 ]
             }
             SpirVOp::ExtendedInstructionImport(id, name) => {
-                let mut name = Self::string_to_spirv_name(name);
-
-                // The Extended Name has to end with
-                // an empty word for some reason.
-                // Don't ask me why, ask Khronos Group.
-                name.push(0);
+                let name = Self::string_to_spirv_name(name);
 
                 let mut result = vec![
                     Self::new_opcode(3 + name.len() as u32 - 1, SpirVOpCode::ExtInstImport),
@@ -967,6 +964,10 @@ impl SpirVBuilder {
         }
 
         result.push(u32::from_le_bytes(integer_buffer));
+
+        if !integer_buffer.contains(&b'\0') {
+            result.push(0);
+        }
 
         result
     }

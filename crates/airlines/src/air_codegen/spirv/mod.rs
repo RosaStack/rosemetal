@@ -142,6 +142,23 @@ impl AirToSpirV {
                             values: vec![null_const; length],
                         })
                     }
+                    SpirVType::Struct(elements) => {
+                        let mut values = vec![];
+                        for i in elements {
+                            values.push(Self::parse_air_constant(
+                                builder,
+                                module,
+                                i,
+                                None,
+                                Some(AirConstantValue::Null),
+                            ));
+                        }
+
+                        builder.new_constant_composite(SpirVConstantComposite {
+                            type_id: type_id,
+                            values: values,
+                        })
+                    }
                     _ => builder.new_constant(SpirVConstant {
                         type_id,
                         value: SpirVConstantValue::Null,
