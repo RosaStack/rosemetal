@@ -675,6 +675,12 @@ pub enum AirType {
     Metadata,
 }
 
+impl AirType {
+    pub fn is_scalar(&self) -> bool {
+        return matches!(self, Self::Float | Self::Integer(_));
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct AirIdentificationBlock {
     pub string: String,

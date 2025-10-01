@@ -328,7 +328,7 @@ impl Parser {
         let word_count = u16::from_le_bytes([first_word[2], first_word[3]]);
 
         Ok(match SpirVOpCode::from_u32(op_code as u32) {
-            SpirVOpCode::SourceLanguage => {
+            SpirVOpCode::Source => {
                 let source_language = self.parse_source_language()?;
                 // word_count - source_language
                 let words_left = word_count - 3;

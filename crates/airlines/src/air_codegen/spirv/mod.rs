@@ -13,8 +13,8 @@ use crate::{
         SpirVAccessChain, SpirVAddressingModel, SpirVBitCast, SpirVBuiltIn, SpirVCapability,
         SpirVCompositeExtract, SpirVCompositeInsert, SpirVConstant, SpirVConstantComposite,
         SpirVConstantValue, SpirVDecorate, SpirVDecorateType, SpirVExecutionModel, SpirVLoad,
-        SpirVMemoryModel, SpirVMemoryOperands, SpirVModule, SpirVStorageClass, SpirVStore,
-        SpirVType, SpirVVariableId, SpirVVectorShuffle,
+        SpirVMemoryModel, SpirVMemoryOperands, SpirVSource, SpirVSourceLanguage, SpirVStorageClass,
+        SpirVStore, SpirVType, SpirVVariableId, SpirVVectorShuffle,
     },
 };
 
@@ -69,19 +69,17 @@ impl AirToSpirV {
                 builder.new_struct_type(&struct_ty.name, struct_ty.name.is_empty(), elements)
             }
             AirType::Array(array_ty) => {
-                let element_ty = Self::parse_air_type(
-                    builder,
-                    module,
-                    &module.types[array_ty.element_type.0 as usize],
-                );
+                let ty = &module.types[array_ty.element_type.0 as usize];
+
+                let element_ty = Self::parse_air_type(builder, module, ty);
+
                 builder.new_type(SpirVType::Array(element_ty, array_ty.size as u32))
             }
             AirType::Vector(vector_ty) => {
-                let element_ty = Self::parse_air_type(
-                    builder,
-                    module,
-                    &module.types[vector_ty.element_type.0 as usize],
-                );
+                let ty = &module.types[vector_ty.element_type.0 as usize];
+
+                let element_ty = Self::parse_air_type(builder, module, ty);
+
                 builder.new_type(SpirVType::Vector(element_ty, vector_ty.size as u32))
             }
             _ => todo!("{:?}", value),
@@ -185,7 +183,14 @@ impl AirToSpirV {
 
         builder.set_version(1, 0);
         builder.add_capability(SpirVCapability::Shader);
+        builder.new_extended_instruction_import("GLSL.std.450");
         builder.add_memory_model(SpirVAddressingModel::Logical, SpirVMemoryModel::Glsl450);
+        builder.add_source(SpirVSource {
+            source_language: SpirVSourceLanguage::Glsl,
+            version: 450,
+        });
+        builder.new_source_extension("GL_GOOGLE_cpp_style_line_directive");
+        builder.new_source_extension("GL_GOOGLE_include_directive");
 
         let mut constants: HashMap<AirConstantId, SpirVVariableId> = HashMap::new();
         dbg!(&module.constants.len());

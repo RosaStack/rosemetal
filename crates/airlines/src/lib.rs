@@ -49,7 +49,9 @@ mod tests {
         let mut conversion = AirToSpirV::new(dbg!(input.start()?));
         conversion.start()?;
 
-        let assembly = conversion.output.assemble();
+        let assembly = conversion.output.assemble_to_bytes();
+
+        std::fs::write("result.spv", assembly)?;
 
         Ok(())
     }

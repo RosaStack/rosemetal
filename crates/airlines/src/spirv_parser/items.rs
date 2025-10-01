@@ -88,7 +88,7 @@ pub struct SpirVLoad {
     pub memory_operands: SpirVMemoryOperands,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum SpirVMemoryOperands {
     #[default]
@@ -285,7 +285,8 @@ pub struct SpirVEntryPoint {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SpirVVariableId(pub u32);
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
 pub enum SpirVSourceLanguage {
     #[default]
     Unknown,
@@ -324,25 +325,26 @@ pub enum SpirVMemoryModel {
     Vulkan,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
 pub enum SpirVExecutionModel {
     #[default]
-    Vertex,
+    Vertex = 0,
     TessellationControl,
     TessellationEvaluation,
     Geometry,
     Fragment,
     GLCompute,
     Kernel,
-    TaskNV,
+    TaskNV = 5267,
     MeshNV,
-    RayGenerationKHR,
+    RayGenerationKHR = 5313,
     IntersectionKHR,
     AnyHitKHR,
     ClosestHitKHR,
     MissKHR,
     CallableKHR,
-    TaskEXT,
+    TaskEXT = 5364,
     MeshEXT,
 }
 
@@ -351,7 +353,7 @@ pub enum SpirVExecutionModel {
 pub enum SpirVOpCode {
     #[default]
     Empty = 0,
-    SourceLanguage = 3,
+    Source = 3,
     SourceExtension = 4,
     Name = 5,
     MemberName = 6,
@@ -377,8 +379,11 @@ pub enum SpirVOpCode {
     AccessChain = 65,
     Decorate = 71,
     MemberDecorate = 72,
+    VectorShuffle = 79,
     CompositeConstruct = 80,
     CompositeExtract = 81,
+    CompositeInsert = 82,
+    BitCast = 124,
     Label = 248,
     Return = 253,
 }
@@ -386,7 +391,7 @@ pub enum SpirVOpCode {
 impl SpirVOpCode {
     pub fn from_u32(v: u32) -> Self {
         match v {
-            3 => Self::SourceLanguage,
+            3 => Self::Source,
             4 => Self::SourceExtension,
             5 => Self::Name,
             6 => Self::MemberName,
@@ -412,8 +417,11 @@ impl SpirVOpCode {
             65 => Self::AccessChain,
             71 => Self::Decorate,
             72 => Self::MemberDecorate,
+            79 => Self::VectorShuffle,
             80 => Self::CompositeConstruct,
             81 => Self::CompositeExtract,
+            82 => Self::CompositeInsert,
+            124 => Self::BitCast,
             248 => Self::Label,
             253 => Self::Return,
             _ => todo!("{:?}", v),
@@ -421,7 +429,7 @@ impl SpirVOpCode {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum FunctionControl {
     #[default]
