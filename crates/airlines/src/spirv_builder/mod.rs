@@ -1,9 +1,10 @@
 use crate::spirv_parser::{
     FunctionControl, SpirVAccessChain, SpirVAddressingModel, SpirVAlloca, SpirVBitCast, SpirVBlock,
     SpirVCapability, SpirVCompositeExtract, SpirVCompositeInsert, SpirVConstant,
-    SpirVConstantComposite, SpirVDecorate, SpirVEntryPoint, SpirVExecutionModel, SpirVFunction,
-    SpirVLoad, SpirVMemoryModel, SpirVModule, SpirVName, SpirVOp, SpirVOpCode, SpirVStorageClass,
-    SpirVStore, SpirVType, SpirVVariableId, SpirVVectorShuffle,
+    SpirVConstantComposite, SpirVConstantValue, SpirVDecorate, SpirVDecorateType, SpirVEntryPoint,
+    SpirVExecutionModel, SpirVFunction, SpirVLoad, SpirVMemoryModel, SpirVModule, SpirVName,
+    SpirVOp, SpirVOpCode, SpirVStorageClass, SpirVStore, SpirVType, SpirVVariableId,
+    SpirVVectorShuffle,
 };
 
 #[derive(Debug, Default, Clone)]
@@ -549,15 +550,171 @@ impl SpirVBuilder {
             }
             SpirVOp::Type(id, ty) => match ty {
                 SpirVType::Int(width, signedness) => vec![
+                    4,
                     SpirVOpCode::TypeInt as u32,
                     id.0,
                     *width,
                     if *signedness { 1 } else { 0 },
                 ],
+                SpirVType::Float(width) => vec![3, SpirVOpCode::TypeFloat as u32, id.0, *width],
+                SpirVType::Vector(type_id, size) => {
+                    vec![4, SpirVOpCode::TypeVector as u32, id.0, type_id.0, *size]
+                }
+                SpirVType::Array(type_id, size) => {
+                    vec![4, SpirVOpCode::TypeArray as u32, id.0, type_id.0, *size]
+                }
+                SpirVType::Function(return_type_id, arguments) => {
+                    let mut result = vec![
+                        3 + arguments.len() as u32,
+                        SpirVOpCode::TypeFunction as u32,
+                        id.0,
+                        return_type_id.0,
+                    ];
+                    result.extend(arguments.iter().map(|value| value.0).collect::<Vec<_>>());
+                    result
+                }
+                SpirVType::Pointer(storage_class, type_id) => {
+                    vec![
+                        4,
+                        SpirVOpCode::TypePointer as u32,
+                        *storage_class as u32,
+                        type_id.0,
+                    ]
+                }
                 _ => todo!("{:?}", ty),
             },
-            SpirVOp::Constant(id, constant) => vec![SpirVOpCode::Constant as u32],
+            SpirVOp::Constant(id, constant) => vec![
+                3,
+                SpirVOpCode::Constant as u32,
+                constant.type_id.0,
+                id.0,
+                match constant.value {
+                    SpirVConstantValue::SignedInteger(int) => {
+                        u32::from_le_bytes((int as i32).to_le_bytes())
+                    }
+                    SpirVConstantValue::UnsignedInteger(int) => int as u32,
+                    SpirVConstantValue::Float32(float) => u32::from_le_bytes(float.to_le_bytes()),
+                    SpirVConstantValue::Float64(float) => {
+                        u32::from_le_bytes((float as f32).to_le_bytes())
+                    }
+                    SpirVConstantValue::Undefined | SpirVConstantValue::Null => {
+                        // Set as '0' for now...
+                        // Please don't make this a permanent
+                        // solution.
+                        0
+                    }
+                    _ => todo!(),
+                },
+            ],
+            SpirVOp::ConstantComposite(id, composite) => {
+                let mut result = vec![
+                    3 + composite.values.len() as u32,
+                    SpirVOpCode::ConstantComposite as u32,
+                    composite.type_id.0,
+                    id.0,
+                ];
+
+                result.extend(
+                    composite
+                        .values
+                        .iter()
+                        .map(|value| value.0)
+                        .collect::<Vec<_>>(),
+                );
+
+                result
+            }
+            SpirVOp::Name(id, name) => {
+                let name = Self::string_to_spirv_name(name);
+                let mut result = vec![3 + name.len() as u32 - 1, SpirVOpCode::Name as u32, id.0];
+                result.extend(name);
+                result
+            }
+            SpirVOp::MemberName(id, index, name) => {
+                let name = Self::string_to_spirv_name(name);
+                let mut result = vec![
+                    4 + name.len() as u32 - 1,
+                    SpirVOpCode::MemberName as u32,
+                    id.0,
+                    *index as u32,
+                ];
+                result.extend(name);
+                result
+            }
+            SpirVOp::Alloca(id, alloca) => {
+                let mut result = vec![
+                    4 + { if alloca.initializer.is_none() { 0 } else { 1 } },
+                    SpirVOpCode::Variable as u32,
+                    alloca.type_id.0,
+                    id.0,
+                    alloca.storage_class as u32,
+                ];
+
+                match alloca.initializer {
+                    Some(init) => result.push(init.0),
+                    None => {}
+                }
+
+                result
+            }
+            SpirVOp::Decorate(target_id, decorate_type) => {
+                let decorate_result = Self::assemble_decorate_type(decorate_type);
+
+                let mut result = vec![
+                    3 + decorate_result.len() as u32 - 1,
+                    SpirVOpCode::Decorate as u32,
+                    target_id.0,
+                ];
+
+                result.extend(decorate_result);
+
+                result
+            }
+            SpirVOp::MemberDecorate(target_id, member_index, decorate_type) => {
+                let decorate_result = Self::assemble_decorate_type(decorate_type);
+
+                let mut result = vec![
+                    4 + decorate_result.len() as u32 - 1,
+                    SpirVOpCode::MemberDecorate as u32,
+                    target_id.0,
+                    *member_index as u32,
+                ];
+
+                result.extend(decorate_result);
+
+                result
+            }
             _ => todo!("{:?}", op),
         }
+    }
+
+    pub fn assemble_decorate_type(decorate_type: &SpirVDecorateType) -> Vec<u32> {
+        match decorate_type {
+            SpirVDecorateType::Block => vec![2],
+            SpirVDecorateType::BuiltIn(builtin) => vec![11, *builtin as u32],
+            SpirVDecorateType::Location(location) => vec![30, *location],
+        }
+    }
+
+    pub fn string_to_spirv_name(name: &String) -> Vec<u32> {
+        let mut result = vec![];
+        let mut count = 0;
+        let mut integer_buffer = [0_u8, 0_u8, 0_u8, 0_u8];
+        for i in name.as_bytes() {
+            if count > 3 {
+                result.push(u32::from_le_bytes(integer_buffer));
+                integer_buffer = [0_u8, 0_u8, 0_u8, 0_u8];
+                count = 0;
+            }
+
+            integer_buffer[count] = *i;
+            count += 1;
+        }
+
+        if count < 3 {
+            result.push(u32::from_le_bytes(integer_buffer));
+        }
+
+        result
     }
 }

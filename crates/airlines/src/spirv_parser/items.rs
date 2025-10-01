@@ -216,12 +216,13 @@ pub enum SpirVDecorateType {
     Location(u32),
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
 pub enum SpirVBuiltIn {
     #[default]
-    Position,
+    Position = 0,
     PointSize,
-    ClipDistance,
+    ClipDistance = 3,
     CullDistance,
     VertexId,
     InstanceId,
@@ -239,7 +240,7 @@ pub enum SpirVBuiltIn {
     SampleId,
     SamplePosition,
     SampleMask,
-    FragDepth,
+    FragDepth = 22,
     HelperInvocation,
     NumWorkgroups,
     WorkgroupSize,
@@ -252,7 +253,7 @@ pub enum SpirVBuiltIn {
     EnqueuedWorkgroupSize,
     GlobalOffset,
     GlobalLinearId,
-    SubgroupSize,
+    SubgroupSize = 36,
     SubgroupMaxSize,
     NumSubgroups,
     NumEnqueuedSubgroups,
