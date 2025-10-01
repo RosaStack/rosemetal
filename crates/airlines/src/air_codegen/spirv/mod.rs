@@ -111,19 +111,34 @@ impl AirToSpirV {
                 value: SpirVConstantValue::Float32(value),
             }),
             AirConstantValue::Undefined | AirConstantValue::Null | AirConstantValue::Poison => {
-                builder.new_constant(SpirVConstant {
-                    type_id,
-                    value: SpirVConstantValue::Null,
-                })
+                let ty = builder.module.type_table.get(&type_id).unwrap().clone();
+                match ty {
+                    SpirVType::Vector(ty_id, size) | SpirVType::Array(ty_id, size) => {
+                        let null_const = builder.new_constant(SpirVConstant {
+                            type_id: ty_id,
+                            value: SpirVConstantValue::Null,
+                        });
+
+                        builder.new_constant_composite(SpirVConstantComposite {
+                            type_id: type_id,
+                            values: vec![null_const; size as usize],
+                        })
+                    }
+                    _ => builder.new_constant(SpirVConstant {
+                        type_id,
+                        value: SpirVConstantValue::Null,
+                    }),
+                }
             }
             AirConstantValue::Array(elements) => {
                 let values = elements
                     .iter()
                     .map(|value| {
+                        let element_ty = Self::spirv_get_element_type(builder, type_id, 0);
                         Self::parse_air_constant(
                             builder,
                             module,
-                            type_id,
+                            element_ty,
                             None,
                             Some(value.clone()),
                         )
@@ -133,34 +148,53 @@ impl AirToSpirV {
                 builder.new_constant_composite(SpirVConstantComposite { type_id, values })
             }
             AirConstantValue::Aggregate(elements) => {
+                let mut count = 0;
                 let values = elements
                     .iter()
-                    .map(|value| match module.value_list.get(value.0 as usize) {
-                        Some(value) => Self::parse_air_constant(
-                            builder,
-                            module,
-                            type_id,
-                            match value {
-                                AirValue::Constant(constant) => {
-                                    Some(module.constants.get(&constant).unwrap().clone())
-                                }
-                                _ => None,
-                            },
-                            None,
-                        ),
-                        None => Self::parse_air_constant(
-                            builder,
-                            module,
-                            type_id,
-                            None,
-                            Some(AirConstantValue::Poison),
-                        ),
+                    .map(|value| {
+                        let element_ty = Self::spirv_get_element_type(builder, type_id, count);
+                        count += 1;
+                        match module.value_list.get(value.0 as usize) {
+                            Some(value) => Self::parse_air_constant(
+                                builder,
+                                module,
+                                element_ty,
+                                match value {
+                                    AirValue::Constant(constant) => {
+                                        Some(module.constants.get(&constant).unwrap().clone())
+                                    }
+                                    _ => None,
+                                },
+                                None,
+                            ),
+                            None => Self::parse_air_constant(
+                                builder,
+                                module,
+                                element_ty,
+                                None,
+                                Some(AirConstantValue::Poison),
+                            ),
+                        }
                     })
                     .collect();
 
                 builder.new_constant_composite(SpirVConstantComposite { type_id, values })
             }
             _ => todo!("{:?}", const_val),
+        }
+    }
+
+    pub fn spirv_get_element_type(
+        builder: &mut SpirVBuilder,
+        id: SpirVVariableId,
+        index: usize,
+    ) -> SpirVVariableId {
+        match builder.module.type_table.get(&id).unwrap() {
+            SpirVType::Vector(type_id, _)
+            | SpirVType::Array(type_id, _)
+            | SpirVType::Pointer(_, type_id) => *type_id,
+            SpirVType::Struct(types) => types[index],
+            _ => id,
         }
     }
 

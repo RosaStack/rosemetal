@@ -950,4 +950,87 @@ impl SpirVBuilder {
 
         result
     }
+
+    pub fn to_string(&self) -> String {
+        let mut result = String::new();
+        for i in &self.module.operands {
+            match i {
+                SpirVOp::Capability(capability) => {
+                    result += &format!("OpCapability {:?}", capability)
+                }
+                SpirVOp::ExtendedInstructionImport(id, import_name) => {
+                    result += &format!("%{:?} = OpExtInstImport \"{}\"", id.0, import_name)
+                }
+                SpirVOp::MemoryModel(addressing_model, memory_model) => {
+                    result += &format!("OpMemoryModel {:?} {:?}", addressing_model, memory_model)
+                }
+                SpirVOp::Source(source) => {
+                    result += &format!("OpSource {:?} {:?}", source.source_language, source.version)
+                }
+                SpirVOp::SourceExtension(extension_name) => {
+                    result += &format!("OpSourceExtension \"{}\"", extension_name)
+                }
+                SpirVOp::Type(id, ty) => {
+                    result += &format!("%{:?} = ", id.0);
+                    match ty {
+                        SpirVType::Float(width) => result += &format!("OpTypeFloat {:?}", width),
+                        SpirVType::Vector(type_id, size) => {
+                            result += &format!("OpTypeVector %{:?} {:?}", type_id.0, size)
+                        }
+                        SpirVType::Int(width, signedness) => {
+                            result += &format!("OpTypeInt {:?} {:?}", width, signedness)
+                        }
+                        SpirVType::Array(type_id, size) => {
+                            result += &format!("OpTypeArray %{:?} {:?}", type_id.0, size)
+                        }
+                        SpirVType::Function(type_id, arguments) => {
+                            result += &format!(
+                                "OpTypeFunction %{:?} {:?}",
+                                type_id.0,
+                                arguments
+                                    .iter()
+                                    .map(|x| format!("%{:?}", x.0))
+                                    .collect::<Vec<_>>()
+                            )
+                        }
+                        SpirVType::Pointer(storage_class, pointer_id) => {
+                            result +=
+                                &format!("OpTypePointer {:?} %{:?}", storage_class, pointer_id.0)
+                        }
+                        _ => todo!("{:?}", ty),
+                    }
+                }
+                SpirVOp::Constant(id, constant) => {
+                    result += &format!(
+                        "%{:?} = OpConstant %{:?} {:?}",
+                        id.0, constant.type_id.0, constant.value
+                    );
+                }
+                SpirVOp::Name(id, name) => result += &format!("OpName %{:?} {}", id.0, name),
+                SpirVOp::ConstantComposite(id, composite) => {
+                    result += &format!(
+                        "%{:?} = OpConstantComposite %{:?} {:?}",
+                        id.0,
+                        composite.type_id.0,
+                        composite
+                            .values
+                            .iter()
+                            .map(|x| format!("%{:?}", x.0))
+                            .collect::<Vec<_>>()
+                    )
+                }
+                SpirVOp::MemberName(id, index, name) => {
+                    result += &format!("OpMemberName %{:?} {:?} {}", id.0, index, name)
+                }
+                // _ => todo!("{i:?}"),
+                _ => {}
+            }
+
+            if *result.as_bytes().last().unwrap() as char != '\n' {
+                result += "\n";
+            }
+        }
+
+        result
+    }
 }
