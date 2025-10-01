@@ -870,6 +870,9 @@ impl SpirVBuilder {
             SpirVOp::ExtendedInstructionImport(id, name) => {
                 let mut name = Self::string_to_spirv_name(name);
 
+                // The Extended Name has to end with
+                // an empty word for some reason.
+                // Don't ask me why, ask Khronos Group.
                 name.push(0);
 
                 let mut result = vec![

@@ -182,8 +182,8 @@ impl AirToSpirV {
         let mut builder = SpirVBuilder::new();
 
         builder.set_version(1, 0);
-        builder.add_capability(SpirVCapability::Shader);
         builder.new_extended_instruction_import("GLSL.std.450");
+        builder.add_capability(SpirVCapability::Shader);
         builder.add_memory_model(SpirVAddressingModel::Logical, SpirVMemoryModel::Glsl450);
         builder.add_source(SpirVSource {
             source_language: SpirVSourceLanguage::Glsl,

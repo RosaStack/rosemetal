@@ -1,6 +1,9 @@
 pub mod items;
 
-use std::{collections::HashMap, u32};
+use std::{
+    collections::{BTreeMap, HashMap},
+    u32,
+};
 
 use anyhow::{Result, anyhow};
 pub use items::*;
@@ -14,7 +17,7 @@ pub struct SpirVModule {
     pub name_table: HashMap<SpirVVariableId, SpirVName>,
     pub entry_point_table: HashMap<SpirVVariableId, SpirVEntryPoint>,
     pub decorate_table: HashMap<SpirVVariableId, SpirVDecorate>,
-    pub type_table: HashMap<SpirVVariableId, SpirVType>,
+    pub type_table: BTreeMap<SpirVVariableId, SpirVType>,
     pub alloca_table: HashMap<SpirVVariableId, SpirVAlloca>,
     pub constants_table: HashMap<SpirVVariableId, SpirVConstant>,
     pub constant_composites_table: HashMap<SpirVVariableId, SpirVConstantComposite>,
