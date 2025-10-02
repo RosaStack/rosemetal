@@ -613,6 +613,9 @@ impl SpirVBuilder {
                         type_id.0,
                     ]
                 }
+                SpirVType::Void => {
+                    vec![Self::new_opcode(2, SpirVOpCode::TypeVoid), id.0]
+                }
                 _ => todo!("{:?}", ty),
             },
             SpirVOp::Constant(id, constant) => {
@@ -1030,6 +1033,7 @@ impl SpirVBuilder {
                             result +=
                                 &format!("OpTypePointer {:?} %{:?}", storage_class, pointer_id.0)
                         }
+                        SpirVType::Void => result += "OpTypeVoid",
                         _ => todo!("{:?}", ty),
                     }
                 }

@@ -251,7 +251,6 @@ impl AirToSpirV {
         let mut builder = SpirVBuilder::new();
 
         builder.set_version(1, 0);
-        builder.new_extended_instruction_import("GLSL.std.450");
         builder.add_capability(SpirVCapability::Shader);
         builder.add_memory_model(SpirVAddressingModel::Logical, SpirVMemoryModel::Glsl450);
         builder.add_source(SpirVSource {
@@ -260,6 +259,7 @@ impl AirToSpirV {
         });
         builder.new_source_extension("GL_GOOGLE_cpp_style_line_directive");
         builder.new_source_extension("GL_GOOGLE_include_directive");
+        builder.new_extended_instruction_import("GLSL.std.450");
 
         let mut constants: HashMap<AirConstantId, SpirVVariableId> = HashMap::new();
         dbg!(&module.constants.len());
@@ -652,12 +652,27 @@ impl AirToSpirV {
             &module.types[air_signature.ty.return_type.0 as usize],
         );
 
-        let function_type = builder.new_type(SpirVType::Function(return_type, vec![]));
-        let func = builder.new_function(
-            &module.string_table[air_signature.name.0 as usize].content,
-            function_type,
-            return_type,
-        );
+        let void_ty = builder.new_type(SpirVType::Void);
+        let function_type =
+            if spirv_entry_point_inputs.is_empty() && spirv_entry_point_outputs.is_empty() {
+                builder.new_type(SpirVType::Function(return_type, vec![]))
+            } else {
+                builder.new_type(SpirVType::Function(void_ty, vec![]))
+            };
+
+        let func = if spirv_entry_point_inputs.is_empty() && spirv_entry_point_outputs.is_empty() {
+            builder.new_function(
+                &module.string_table[air_signature.name.0 as usize].content,
+                function_type,
+                return_type,
+            )
+        } else {
+            builder.new_function(
+                &module.string_table[air_signature.name.0 as usize].content,
+                function_type,
+                void_ty,
+            )
+        };
 
         let air_function_body = air_function_body.unwrap();
 
