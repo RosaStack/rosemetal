@@ -2,6 +2,7 @@ pub mod air_builder;
 pub mod air_codegen;
 pub mod air_parser;
 pub mod llvm_bitcode;
+pub mod metal_lib;
 pub mod spirv_builder;
 pub mod spirv_codegen;
 pub mod spirv_parser;
@@ -10,9 +11,16 @@ pub mod spirv_parser;
 mod tests {
     use anyhow::Result;
 
-    use crate::{air_codegen::AirToSpirV, spirv_codegen::air::SpirVToAir};
+    use crate::{air_codegen::AirToSpirV, metal_lib::MtlLibrary, spirv_codegen::air::SpirVToAir};
 
     use super::llvm_bitcode::*;
+
+    #[test]
+    fn read_metal_lib() -> Result<()> {
+        let metal_lib = MtlLibrary::default().read(&std::fs::read("test-files/test.metallib")?)?;
+
+        Ok(())
+    }
 
     #[test]
     fn spirv_parser() -> Result<()> {

@@ -545,7 +545,7 @@ impl SpirVBuilder {
         result.push(u32::from_le_bytes([0_u8, 0_u8, 1_u8, 0_u8]));
 
         // Generator, Bound and Schema.
-        result.extend(vec![0x000D000B, self.current_variable_id, 0]);
+        result.extend(vec![0, self.current_variable_id + 1, 0]);
 
         for i in &self.module.operands {
             result.extend(self.assemble_operand(i));
