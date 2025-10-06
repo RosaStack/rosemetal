@@ -4,7 +4,7 @@ use anyhow::{Result, anyhow};
 
 use crate::llvm_bitcode::{AttributeKindCode, CastOpCode, Fields, GEPNoWrapFlags};
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct AirFile {
     pub items: Vec<AirItem>,
 }
