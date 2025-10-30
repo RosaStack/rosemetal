@@ -494,7 +494,7 @@ impl SpirVBuilder {
         let current_block = self.block_list.last_mut().unwrap();
 
         match value {
-            Some(s) => current_block.instructions.push(SpirVOp::ReturnValue(id)),
+            Some(s) => current_block.instructions.push(SpirVOp::ReturnValue(s)),
             None => current_block.instructions.push(SpirVOp::Return),
         }
 
@@ -619,7 +619,7 @@ impl SpirVBuilder {
                 _ => todo!("{:?}", ty),
             },
             SpirVOp::Constant(id, constant) => {
-                let mut constant_words =
+                let constant_words =
                     match constant.value {
                         SpirVConstantValue::SignedInteger(int) => {
                             vec![u32::from_le_bytes((int as i32).to_le_bytes())]
@@ -647,7 +647,6 @@ impl SpirVBuilder {
                                 _ => vec![0],
                             }
                         }
-                        _ => todo!(),
                     };
 
                 let mut result = vec![

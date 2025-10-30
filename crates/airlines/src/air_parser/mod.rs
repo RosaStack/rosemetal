@@ -723,6 +723,9 @@ impl Parser {
                         MetadataCodes::NAME => {
                             current_name = Self::parse_string(record.fields);
                         }
+                        MetadataCodes::DISTINCT_NODE => {
+                            // Skip. We don't need this data (for now).
+                        }
                         _ => todo!("{:?}", MetadataCodes::from_u64(record.code)),
                     },
                     _ => todo!(),
@@ -944,6 +947,19 @@ impl Parser {
                             contents.push(AirValueId(result.value_list.len() as u64 - 1));
 
                             next_value_no += 1;
+                        }
+                        FunctionCodes::INST_INSERTELT => {
+                            let vector = self.get_value(result, record.fields[0], next_value_no);
+                            let value = self.get_value(result, record.fields[1], next_value_no);
+                            let index = self.get_value(result, record.fields[2], next_value_no);
+
+                            result.value_list.push(AirValue::InsertElt(AirInsertElt {
+                                vector,
+                                value,
+                                index,
+                            }));
+
+                            contents.push(AirValueId(result.value_list.len() as u64 - 1));
                         }
                         _ => todo!("{:?}", FunctionCodes::from_u64(record.code)),
                     },

@@ -17,6 +17,9 @@ pub struct State {
     view: Arc<MTLView>,
     queue: Arc<MTLCommandQueue>,
     render_pass: Arc<MTLRenderPass>,
+    render_pipeline_state: MTLRenderPipelineState,
+
+    triangle_buffer: Arc<MTLBuffer<MTLFloat3>>,
 }
 
 impl State {
@@ -36,6 +39,33 @@ impl State {
 
         let queue = MTLCommandQueue::new(device.clone())?;
 
+        let position = -2.0;
+
+        let triangle_buffer = device.make_buffer(
+            &[
+                MTLFloat3::new(-position, -position, 0.0),
+                MTLFloat3::new(position, -position, 0.0),
+                MTLFloat3::new(0.0, position, 0.0),
+            ],
+            MTLBufferUsage::Vertex,
+        )?;
+
+        let library = device.new_library(&std::fs::read("Shaders.metallib")?)?;
+
+        let vertex_function = Some(library.get_function("vertex_shader", MTLFunctionType::Vertex)?);
+        let fragment_function =
+            Some(library.get_function("fragment_shader", MTLFunctionType::Fragment)?);
+
+        let render_pipeline = MTLRenderPipelineDescriptor {
+            label: "Triangle Rendering Pipeline".to_string(),
+            vertex_function,
+            fragment_function,
+            color_attachments: vec![MTLRenderPipelineColorAttachment {
+                pixel_format: view.pixel_format().clone(),
+            }],
+            ..Default::default()
+        };
+
         let render_pass = MTLRenderPass::new(
             device.clone(),
             MTLRenderPassDescriptor {
@@ -47,12 +77,17 @@ impl State {
             },
         );
 
+        let render_pipeline_state = device.new_render_pipeline_state(render_pipeline)?;
+
         Ok(Self {
             window,
             device,
             view,
             queue,
             render_pass,
+            render_pipeline_state,
+
+            triangle_buffer,
         })
     }
 
@@ -68,9 +103,9 @@ impl State {
         let begin = MTLBeginRenderPassDescriptor {
             color_attachments: vec![MTLBeginRenderPassColorAttachment {
                 clear_color: MTLClearColor {
-                    red: 0.0,
-                    green: 1.0,
-                    blue: 0.0,
+                    red: 41.0 / 255.0,
+                    green: 42.0 / 255.0,
+                    blue: 48.0 / 255.0,
                     alpha: 1.0,
                 },
                 texture: drawable.clone(),
@@ -80,6 +115,15 @@ impl State {
 
         let encoder =
             MTLRenderCommandEncoder::new(buffer.clone(), self.render_pass.clone(), begin).unwrap();
+
+        encoder
+            .set_render_pipeline_state(&self.render_pipeline_state)
+            .unwrap();
+
+        encoder.set_vertex_buffer(&self.triangle_buffer).unwrap();
+        encoder
+            .draw_primitives(MTLPrimitiveType::Triangle, 0, 3)
+            .unwrap();
 
         encoder.end_encoding().unwrap();
 

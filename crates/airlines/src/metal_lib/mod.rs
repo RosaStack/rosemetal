@@ -2,11 +2,11 @@ pub mod reader;
 
 use anyhow::{Result, anyhow};
 
-use crate::air_parser::AirFile;
+use crate::{air_codegen::AirToSpirV, air_parser::AirFile};
 
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
-pub enum MtlLibraryTargetOSType {
+pub enum MTLLibraryTargetOSType {
     #[default]
     Unknown = 0,
     MacOS = 0x81,
@@ -20,7 +20,7 @@ pub enum MtlLibraryTargetOSType {
     WatchOSSimulator = 0x89,
 }
 
-impl MtlLibraryTargetOSType {
+impl MTLLibraryTargetOSType {
     pub fn from_u8(v: u8) -> Result<Self> {
         Ok(match v {
             0 => Self::Unknown,
@@ -39,27 +39,27 @@ impl MtlLibraryTargetOSType {
 }
 
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Hash)]
-pub struct MtlLibraryTargetOS {
-    pub ty: MtlLibraryTargetOSType,
+pub struct MTLLibraryTargetOS {
+    pub ty: MTLLibraryTargetOSType,
     pub major: u16,
     pub minor: u16,
 }
 
-impl MtlLibraryTargetOS {
-    pub fn new(ty: MtlLibraryTargetOSType, major: u16, minor: u16) -> Self {
+impl MTLLibraryTargetOS {
+    pub fn new(ty: MTLLibraryTargetOSType, major: u16, minor: u16) -> Self {
         Self { ty, major, minor }
     }
 }
 
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Hash)]
 #[repr(u16)]
-pub enum MtlLibraryPlatform {
+pub enum MTLLibraryPlatform {
     #[default]
     MacOS = 0x8001,
     IOS = 0x0001,
 }
 
-impl MtlLibraryPlatform {
+impl MTLLibraryPlatform {
     pub fn from_u16(v: u16) -> Result<Self> {
         Ok(match v {
             0x8001 => Self::MacOS,
@@ -71,7 +71,7 @@ impl MtlLibraryPlatform {
 
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq)]
 #[repr(u8)]
-pub enum MtlLibraryType {
+pub enum MTLLibraryType {
     #[default]
     Executable,
     CoreImage,
@@ -79,7 +79,7 @@ pub enum MtlLibraryType {
     SymbolCompanion,
 }
 
-impl MtlLibraryType {
+impl MTLLibraryType {
     pub fn from_u8(v: u8) -> Result<Self> {
         Ok(match v {
             0 => Self::Executable,
@@ -92,11 +92,11 @@ impl MtlLibraryType {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct MtlLibrarySignature {
-    pub target_platform: MtlLibraryPlatform,
+pub struct MTLLibrarySignature {
+    pub target_platform: MTLLibraryPlatform,
     pub version: (u16, u16),
-    pub library_type: MtlLibraryType,
-    pub target_os: MtlLibraryTargetOS,
+    pub library_type: MTLLibraryType,
+    pub target_os: MTLLibraryTargetOS,
     pub file_size: u64,
     pub function_list_offset: u64,
     pub function_list_size: u64,
@@ -109,20 +109,30 @@ pub struct MtlLibrarySignature {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct RmtlShader {
+pub struct RMLShader {
     pub air: Option<AirFile>,
 }
 
-impl RmtlShader {
+impl RMLShader {
     pub fn from_air_file(content: AirFile) -> Self {
         Self { air: Some(content) }
     }
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct MtlLibrary {
+pub struct MTLLibraryParser {
     pub content: Vec<u8>,
-    pub signature: MtlLibrarySignature,
-    pub shader: RmtlShader,
+    pub signature: MTLLibrarySignature,
+    pub shader: RMLShader,
     position: usize,
+}
+
+impl MTLLibraryParser {
+    pub fn to_spirv_binary(&self) -> Vec<u32> {
+        let mut air_to_spirv = AirToSpirV::new(self.shader.air.clone().unwrap());
+
+        air_to_spirv.start().unwrap();
+
+        air_to_spirv.output.assemble()
+    }
 }

@@ -11,13 +11,16 @@ pub mod spirv_parser;
 mod tests {
     use anyhow::Result;
 
-    use crate::{air_codegen::AirToSpirV, metal_lib::MtlLibrary, spirv_codegen::air::SpirVToAir};
+    use crate::{
+        air_codegen::AirToSpirV, metal_lib::MTLLibraryParser, spirv_codegen::air::SpirVToAir,
+    };
 
     use super::llvm_bitcode::*;
 
     #[test]
     fn read_metal_lib() -> Result<()> {
-        let metal_lib = MtlLibrary::default().read(&std::fs::read("test-files/test.metallib")?)?;
+        let metal_lib =
+            MTLLibraryParser::default().read(&std::fs::read("test-files/test.metallib")?)?;
 
         Ok(())
     }

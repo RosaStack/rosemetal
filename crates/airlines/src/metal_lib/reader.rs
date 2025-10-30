@@ -3,18 +3,18 @@ use anyhow::{Result, anyhow};
 use crate::{
     air_parser,
     metal_lib::{
-        MtlLibrary, MtlLibraryPlatform, MtlLibrarySignature, MtlLibraryTargetOS,
-        MtlLibraryTargetOSType, MtlLibraryType,
+        MTLLibraryParser, MTLLibraryPlatform, MTLLibrarySignature, MTLLibraryTargetOS,
+        MTLLibraryTargetOSType, MTLLibraryType,
     },
 };
 
-impl MtlLibrary {
+impl MTLLibraryParser {
     pub fn read(&mut self, content: &[u8]) -> Result<&mut Self> {
         self.content = content.to_vec();
 
         self.signature = self.read_signature()?;
 
-        self.shader = super::RmtlShader::from_air_file(
+        self.shader = super::RMLShader::from_air_file(
             air_parser::Parser::new(
                 content[self.signature.bitcode_offset as usize
                     ..(self.signature.bitcode_offset + self.signature.bitcode_size) as usize]
@@ -26,7 +26,7 @@ impl MtlLibrary {
         Ok(self)
     }
 
-    pub fn read_signature(&mut self) -> Result<MtlLibrarySignature> {
+    pub fn read_signature(&mut self) -> Result<MTLLibrarySignature> {
         let start = [
             self.advance()?,
             self.advance()?,
@@ -39,25 +39,25 @@ impl MtlLibrary {
         }
 
         let target_platform =
-            MtlLibraryPlatform::from_u16(u16::from_le_bytes([self.advance()?, self.advance()?]))?;
+            MTLLibraryPlatform::from_u16(u16::from_le_bytes([self.advance()?, self.advance()?]))?;
 
         let version = (
             u16::from_le_bytes([self.advance()?, self.advance()?]),
             u16::from_le_bytes([self.advance()?, self.advance()?]),
         );
 
-        let library_type = MtlLibraryType::from_u8(self.advance()?)?;
+        let library_type = MTLLibraryType::from_u8(self.advance()?)?;
 
-        let target_os_type = MtlLibraryTargetOSType::from_u8(self.advance()?)?;
+        let target_os_type = MTLLibraryTargetOSType::from_u8(self.advance()?)?;
 
         let mut major = 0;
         let mut minor = 0;
-        if !matches!(target_os_type, MtlLibraryTargetOSType::Unknown) {
+        if !matches!(target_os_type, MTLLibraryTargetOSType::Unknown) {
             major = u16::from_le_bytes([self.advance()?, self.advance()?]);
             minor = u16::from_le_bytes([self.advance()?, self.advance()?]);
         }
 
-        let target_os = MtlLibraryTargetOS::new(target_os_type, major, minor);
+        let target_os = MTLLibraryTargetOS::new(target_os_type, major, minor);
 
         let file_size = self.advance_u64()?;
 
@@ -73,7 +73,7 @@ impl MtlLibrary {
         let bitcode_offset = self.advance_u64()?;
         let bitcode_size = self.advance_u64()?;
 
-        Ok(MtlLibrarySignature {
+        Ok(MTLLibrarySignature {
             target_platform,
             version,
             library_type,

@@ -1,9 +1,8 @@
-use std::borrow::Borrow;
 #[cfg(any(not(any(target_os = "macos", target_os = "ios")), feature = "moltenvk"))]
 use std::cell::RefCell;
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
-use crate::{MTLDevice, MTLTexture};
+use crate::{MTLDevice, MTLPixelFormat, MTLTexture, shader::MTLFunction};
 
 #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
 use anyhow::Result;
@@ -12,12 +11,16 @@ use anyhow::Result;
 #[cfg(any(not(any(target_os = "macos", target_os = "ios")), feature = "moltenvk"))]
 use ash::vk;
 #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
-use objc2::rc::Retained;
+use objc2::{rc::Retained, runtime::ProtocolObject};
 #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
 use objc2_metal::{
-    MTLClearColor as MetalMTLClearColor, MTLLoadAction as MetalMTLLoadAction,
+    MTLClearColor as MetalMTLClearColor, MTLFunction as MetalMTLFunction,
+    MTLLoadAction as MetalMTLLoadAction,
     MTLRenderPassColorAttachmentDescriptor as MetalMTLRenderPassColorAttachmentDescriptor,
-    MTLRenderPassDescriptor as MetalMTLRenderPassDescriptor, MTLStoreAction as MetalMTLStoreAction,
+    MTLRenderPassDescriptor as MetalMTLRenderPassDescriptor,
+    MTLRenderPipelineColorAttachmentDescriptor as MetalMTLRenderPipelineColorAttachmentDescriptor,
+    MTLRenderPipelineDescriptor as MetalMTLRenderPipelineDescriptor,
+    MTLRenderPipelineState as MetalMTLRenderPipelineState, MTLStoreAction as MetalMTLStoreAction,
 };
 
 pub struct MTLRenderPass {
@@ -147,7 +150,7 @@ impl MTLRenderPassDescriptor {
 
         let mut count = 0;
         for i in &self.color_attachments {
-            i.set_in_metal(&mut result, begin, count);
+            i.to_metal_render_pass(&mut result, begin, count).unwrap();
             count += 1;
         }
 
@@ -229,7 +232,7 @@ pub struct MTLRenderPassColorAttachment {
 
 impl MTLRenderPassColorAttachment {
     #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
-    pub fn set_in_metal(
+    pub fn to_metal_render_pass(
         &self,
         result: &Retained<MetalMTLRenderPassDescriptor>,
         begin_descriptor: &MTLBeginRenderPassDescriptor,
@@ -366,5 +369,100 @@ impl MTLStoreAction {
             Self::Store => vk::AttachmentStoreOp::STORE,
             Self::Unknown => vk::AttachmentStoreOp::NONE,
         }
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct MTLRenderPipelineDescriptor {
+    pub label: String,
+    pub vertex_function: Option<MTLFunction>,
+    pub fragment_function: Option<MTLFunction>,
+    pub color_attachments: Vec<MTLRenderPipelineColorAttachment>,
+}
+
+impl MTLRenderPipelineDescriptor {
+    #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+    pub fn to_metal(&self) -> Retained<MetalMTLRenderPipelineDescriptor> {
+        let native = MetalMTLRenderPipelineDescriptor::new();
+
+        let fragment: Option<&ProtocolObject<dyn MetalMTLFunction>> =
+            Some(self.fragment_function.to_metal().deref());
+        native.setFragmentFunction(fragment);
+
+        let vertex: Option<&ProtocolObject<dyn MetalMTLFunction>> =
+            Some(self.vertex_function.to_metal().deref());
+        native.setVertexFunction(vertex);
+
+        let mut count = 0;
+        for i in &self.color_attachments {
+            unsafe {
+                native
+                    .colorAttachments()
+                    .setObject_atIndexedSubscript(Some(i.to_metal().deref()), count);
+            }
+            count += 1;
+        }
+
+        native
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MTLRenderPipelineColorAttachment {
+    pub pixel_format: MTLPixelFormat,
+}
+
+impl MTLRenderPipelineColorAttachment {
+    #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+    pub fn to_metal(&self) -> Retained<MetalMTLRenderPipelineColorAttachmentDescriptor> {
+        let result = unsafe { MetalMTLRenderPipelineColorAttachmentDescriptor::new() };
+
+        result.setPixelFormat(self.pixel_format.to_metal());
+
+        result
+    }
+}
+
+pub struct MTLRenderPipelineState {
+    device: Arc<MTLDevice>,
+    description: MTLRenderPipelineDescriptor,
+
+    #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+    native_mtl_state: Retained<ProtocolObject<dyn MetalMTLRenderPipelineState>>,
+}
+
+impl MTLRenderPipelineState {
+    #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+    pub fn from_metal(
+        device: Arc<MTLDevice>,
+        descriptor: MTLRenderPipelineDescriptor,
+        native_mtl_state: Retained<ProtocolObject<dyn MetalMTLRenderPipelineState>>,
+    ) -> Self {
+        Self {
+            device,
+            description: descriptor,
+            native_mtl_state,
+        }
+    }
+
+    #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+    pub fn metal_state(&self) -> &Retained<ProtocolObject<dyn MetalMTLRenderPipelineState>> {
+        &self.native_mtl_state
+    }
+
+    #[cfg(any(not(any(target_os = "macos", target_os = "ios")), feature = "moltenvk"))]
+    pub fn from_vulkan(device: Arc<MTLDevice>, descriptor: MTLRenderPipelineDescriptor) -> Self {
+        Self {
+            device,
+            description: descriptor,
+        }
+    }
+
+    pub fn device(&self) -> &Arc<MTLDevice> {
+        &self.device
+    }
+
+    pub fn description(&self) -> &MTLRenderPipelineDescriptor {
+        &self.description
     }
 }

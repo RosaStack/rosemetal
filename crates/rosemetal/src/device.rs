@@ -1,17 +1,18 @@
-#[cfg(any(not(any(target_os = "macos", target_os = "ios")), feature = "moltenvk"))]
-use crate::MTLRenderPassDescriptor;
-use crate::RMLInstance;
+use crate::{
+    MTLBufferUsage, MTLRenderPass, MTLRenderPipelineDescriptor, MTLRenderPipelineState, MTLView,
+    RMLInstance, buffer::MTLBuffer, shader::MTLLibrary,
+};
 use anyhow::{Result, anyhow};
 #[cfg(any(not(any(target_os = "macos", target_os = "ios")), feature = "moltenvk"))]
 use ash::vk;
-use std::ffi::CStr;
-use std::sync::Arc;
 #[cfg(any(not(any(target_os = "macos", target_os = "ios")), feature = "moltenvk"))]
 use std::{
     cell::RefCell,
     collections::BTreeMap,
     sync::{RwLock, atomic::AtomicU32},
 };
+use std::{ffi::CStr, ptr::NonNull, sync::atomic::Ordering};
+use std::{ffi::c_void, sync::Arc};
 
 #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
 use objc2::{rc::Retained, runtime::ProtocolObject};
@@ -28,6 +29,97 @@ pub struct MTLDevice {
 
     #[cfg(any(not(any(target_os = "macos", target_os = "ios")), feature = "moltenvk"))]
     vulkan_device: VulkanMTLDevice,
+}
+
+pub trait ArcMTLDevice {
+    fn make_buffer<T>(&self, data: &[T], usage: MTLBufferUsage) -> Result<Arc<MTLBuffer<T>>>;
+    fn new_render_pipeline_state(
+        &self,
+        render_pipeline_descriptor: MTLRenderPipelineDescriptor,
+    ) -> Result<MTLRenderPipelineState>;
+
+    #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+    fn metal_make_buffer<T>(&self, data: &[T]) -> Result<Arc<MTLBuffer>>;
+
+    #[cfg(any(not(any(target_os = "macos", target_os = "ios")), feature = "moltenvk"))]
+    fn vulkan_make_buffer<T>(&self, data: &[T], usage: MTLBufferUsage)
+    -> Result<Arc<MTLBuffer<T>>>;
+}
+
+impl ArcMTLDevice for Arc<MTLDevice> {
+    #[allow(unused_variables)]
+    fn make_buffer<T>(&self, data: &[T], usage: MTLBufferUsage) -> Result<Arc<MTLBuffer<T>>> {
+        #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+        return self.metal_make_buffer(data);
+
+        #[cfg(any(not(any(target_os = "macos", target_os = "ios")), feature = "moltenvk"))]
+        return self.vulkan_make_buffer(data, usage);
+    }
+
+    #[cfg(any(not(any(target_os = "macos", target_os = "ios")), feature = "moltenvk"))]
+    fn vulkan_make_buffer<T>(
+        &self,
+        data: &[T],
+        usage: MTLBufferUsage,
+    ) -> Result<Arc<MTLBuffer<T>>> {
+        let device = self.vulkan_device().logical();
+
+        let buffer = unsafe {
+            device.create_buffer(
+                &vk::BufferCreateInfo::default()
+                    .usage(usage.to_vulkan())
+                    .size((size_of::<T>() * data.len()) as u64)
+                    .sharing_mode(vk::SharingMode::EXCLUSIVE),
+                None,
+            )?
+        };
+
+        todo!()
+    }
+
+    #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+    fn metal_make_buffer<T>(&self, data: &[T]) -> Result<Arc<MTLBuffer>> {
+        use objc2_metal::MTLResourceOptions;
+
+        let data_ptr = data.as_ptr();
+        let data_non_null = unsafe { NonNull::new_unchecked(data_ptr as *mut c_void) };
+
+        let metal_buffer = unsafe {
+            self.metal_device().newBufferWithBytes_length_options(
+                data_non_null,
+                size_of::<T>() * data.len(),
+                MTLResourceOptions::StorageModeShared,
+            )
+        }
+        .unwrap();
+
+        Ok(Arc::new(MTLBuffer::from_metal(self.clone(), metal_buffer)))
+    }
+
+    fn new_render_pipeline_state(
+        &self,
+        render_pipeline_descriptor: MTLRenderPipelineDescriptor,
+    ) -> Result<MTLRenderPipelineState> {
+        #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+        {
+            return Ok(MTLRenderPipelineState::from_metal(
+                self.clone(),
+                render_pipeline_descriptor,
+                self.metal_device()
+                    .newRenderPipelineStateWithDescriptor_error(
+                        &render_pipeline_descriptor.to_metal(),
+                    )?,
+            ));
+        }
+
+        #[cfg(any(not(any(target_os = "macos", target_os = "ios")), feature = "moltenvk"))]
+        {
+            return Ok(MTLRenderPipelineState::from_vulkan(
+                self.clone(),
+                render_pipeline_descriptor,
+            ));
+        }
+    }
 }
 
 impl MTLDevice {
@@ -247,6 +339,19 @@ impl MTLDevice {
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn new_library(&self, content: &[u8]) -> Result<Arc<MTLLibrary>> {
+        #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+        return self.metal_new_library(content);
+
+        #[cfg(any(not(any(target_os = "macos", target_os = "ios")), feature = "moltenvk"))]
+        todo!("Vulkan Support.")
+    }
+
+    #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+    pub fn metal_new_library(&self, content: &[u8]) -> Result<Arc<MTLLibrary>> {
+        Ok(Arc::new(MTLLibrary::from_metal_lib(content, self)?))
     }
 }
 

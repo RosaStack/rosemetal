@@ -335,6 +335,7 @@ pub enum AirValue {
     Load(AirLoad),
     ShuffleVec(AirShuffleVec),
     InsertVal(AirInsertVal),
+    InsertElt(AirInsertElt),
     Return(AirReturn),
 }
 
@@ -348,6 +349,13 @@ pub struct AirInsertVal {
     pub value1: AirValueId,
     pub value2: AirValueId,
     pub insert_value_idx: u64,
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct AirInsertElt {
+    pub vector: AirValueId,
+    pub value: AirValueId,
+    pub index: AirValueId,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]

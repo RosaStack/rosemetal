@@ -1,5 +1,6 @@
 use crate::{
-    MTLBeginRenderPassDescriptor, MTLDevice, MTLRenderPass, MTLRenderPassDescriptor, MTLTexture,
+    MTLBeginRenderPassDescriptor, MTLBuffer, MTLDevice, MTLPrimitiveType, MTLRenderPass,
+    MTLRenderPassDescriptor, MTLRenderPipelineState, MTLTexture,
 };
 use anyhow::{Result, anyhow};
 use crossbeam::queue::SegQueue;
@@ -406,6 +407,48 @@ impl MTLRenderCommandEncoder {
     #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
     pub fn metal_end_encoding(&self) -> Result<()> {
         self.metal_render_command_encoder.endEncoding();
+
+        Ok(())
+    }
+
+    pub fn set_render_pipeline_state(&self, pipeline_state: &MTLRenderPipelineState) -> Result<()> {
+        #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+        {
+            self.metal_render_command_encoder
+                .setRenderPipelineState(&pipeline_state.metal_state());
+        }
+
+        #[cfg(any(not(any(target_os = "macos", target_os = "ios")), feature = "moltenvk"))]
+        {
+            todo!()
+        }
+
+        Ok(())
+    }
+
+    pub fn set_vertex_buffer<T>(&self, buffer: &Arc<MTLBuffer<T>>) -> Result<()> {
+        #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+        unsafe {
+            // TODO: Add Params for `offset` and `index`.
+
+            use std::ops::Deref;
+            self.metal_render_command_encoder
+                .setVertexBuffer_offset_atIndex(Some(buffer.metal_buffer().deref()), 0, 0);
+        }
+        Ok(())
+    }
+
+    pub fn draw_primitives(
+        &self,
+        ty: MTLPrimitiveType,
+        vertex_start: usize,
+        vertex_count: usize,
+    ) -> Result<()> {
+        #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+        unsafe {
+            self.metal_render_command_encoder
+                .drawPrimitives_vertexStart_vertexCount(ty.to_metal(), vertex_start, vertex_count);
+        }
 
         Ok(())
     }

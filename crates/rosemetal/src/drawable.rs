@@ -25,15 +25,7 @@ use objc2_quartz_core::{CAMetalDrawable, CAMetalLayer};
 use raw_window_metal::Layer;
 
 #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
-use objc2_metal::{
-    MTLClearColor as MetalMTLClearColor, MTLCommandBuffer as MetalMTLCommandBuffer,
-    MTLCommandEncoder as MetalMTLCommandEncoder, MTLCommandQueue as MetalMTLCommandQueue,
-    MTLDevice as MetalMTLDevice, MTLLoadAction as MetalMTLLoadAction,
-    MTLPixelFormat as MetalMTLPixelFormat, MTLRenderCommandEncoder as MetalMTLRenderCommandEncoder,
-    MTLRenderPassColorAttachmentDescriptor as MetalMTLRenderPassColorAttachmentDescriptor,
-    MTLRenderPassDescriptor as MetalMTLRenderPassDescriptor, MTLStoreAction as MetalMTLStoreAction,
-    MTLTexture as MetalMTLTexture,
-};
+use objc2_metal::{MTLPixelFormat as MetalMTLPixelFormat, MTLTexture as MetalMTLTexture};
 
 pub struct MTLTexture {
     device: Arc<MTLDevice>,
@@ -103,6 +95,10 @@ impl MTLTexture {
             vulkan_framebuffer: RwLock::new(None),
             vulkan_sync_object: RwLock::new(None),
         }))
+    }
+
+    pub fn device(&self) -> &Arc<MTLDevice> {
+        &self.device
     }
 
     pub fn width(&self) -> u32 {
@@ -752,7 +748,7 @@ impl VulkanInFlightFrames {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum MTLPixelFormat {
     Bgra8Unorm,
 }
@@ -762,6 +758,14 @@ impl MTLPixelFormat {
     pub fn from_metal(metal_format: MetalMTLPixelFormat) -> Self {
         match metal_format {
             MetalMTLPixelFormat::BGRA8Unorm => MTLPixelFormat::Bgra8Unorm,
+            _ => todo!("Format not yet handled."),
+        }
+    }
+
+    #[cfg(all(any(target_os = "macos", target_os = "ios"), not(feature = "moltenvk")))]
+    pub fn to_metal(&self) -> MetalMTLPixelFormat {
+        match self {
+            Self::Bgra8Unorm => MetalMTLPixelFormat::BGRA8Unorm,
             _ => todo!("Format not yet handled."),
         }
     }
